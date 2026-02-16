@@ -374,6 +374,7 @@ dependencies = [
  "forge-core",
  "forge-store",
  "jsonrpsee",
+ "libc",
  "serde",
  "serde_json",
  "tokio",
@@ -381,6 +382,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

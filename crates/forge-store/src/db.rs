@@ -30,7 +30,9 @@ impl Database {
                 status      TEXT NOT NULL DEFAULT 'registered',
                 pid         INTEGER,
                 registered_at TEXT NOT NULL,
-                started_at  TEXT
+                started_at  TEXT,
+                stopped_at  TEXT,
+                exit_code   INTEGER
             );
 
             CREATE TABLE IF NOT EXISTS memory (
@@ -43,6 +45,26 @@ impl Database {
                 UNIQUE(agent_id, key)
             );
             ",
-        )
+        )?;
+
+        // Migrate existing databases: add new columns if missing
+        self.add_column_if_missing("agents", "stopped_at", "TEXT")?;
+        self.add_column_if_missing("agents", "exit_code", "INTEGER")?;
+
+        Ok(())
+    }
+
+    fn add_column_if_missing(
+        &self,
+        table: &str,
+        column: &str,
+        col_type: &str,
+    ) -> Result<(), rusqlite::Error> {
+        let sql = format!("ALTER TABLE {table} ADD COLUMN {column} {col_type}");
+        match self.conn.execute_batch(&sql) {
+            Ok(()) => Ok(()),
+            Err(e) if e.to_string().contains("duplicate column name") => Ok(()),
+            Err(e) => Err(e),
+        }
     }
 }

@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::registry::AgentRegistry;
+use crate::supervisor::ProcessSupervisor;
 
 #[rpc(server)]
 pub trait ForgeApi {
@@ -40,6 +41,7 @@ pub trait ForgeApi {
 pub struct ForgeRpc {
     pub registry: Arc<AgentRegistry>,
     pub db: Arc<Mutex<Database>>,
+    pub supervisor: Arc<ProcessSupervisor>,
 }
 
 fn to_rpc_error(e: impl std::fmt::Display) -> ErrorObjectOwned {
@@ -114,6 +116,11 @@ impl ForgeApiServer for ForgeRpc {
             let _ = db.update_agent_status(uuid, AgentStatus::Running, pid);
         }
 
+        // Hand off child to supervisor for monitoring
+        self.supervisor
+            .start_monitoring(uuid, child, record.manifest.clone())
+            .await;
+
         tracing::info!(id = %uuid, pid = ?pid, "agent started");
         self.registry.get(uuid).await.map_err(to_rpc_error)
     }
@@ -126,19 +133,25 @@ impl ForgeApiServer for ForgeRpc {
             return Err(to_rpc_error(format!("agent not running: {uuid}")));
         }
 
-        if let Some(pid) = record.pid {
-            #[cfg(unix)]
-            {
-                unsafe {
-                    libc::kill(pid as i32, libc::SIGTERM);
+        // Delegate to supervisor (kills child + waits)
+        let stopped = self.supervisor.stop_agent(uuid).await;
+
+        if !stopped {
+            // Fallback: agent not in supervisor (shouldn't happen, but be safe)
+            if let Some(pid) = record.pid {
+                #[cfg(unix)]
+                {
+                    unsafe {
+                        libc::kill(pid as i32, libc::SIGTERM);
+                    }
                 }
-            }
-            #[cfg(windows)]
-            {
-                let _ = tokio::process::Command::new("taskkill")
-                    .args(["/PID", &pid.to_string(), "/F"])
-                    .output()
-                    .await;
+                #[cfg(windows)]
+                {
+                    let _ = tokio::process::Command::new("taskkill")
+                        .args(["/PID", &pid.to_string(), "/F"])
+                        .output()
+                        .await;
+                }
             }
         }
 

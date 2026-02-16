@@ -11,8 +11,8 @@ impl Database {
             serde_json::to_string(&record.manifest).expect("manifest serialization");
         let status = status_to_str(record.status);
         self.conn.execute(
-            "INSERT INTO agents (id, name, manifest, status, pid, registered_at, started_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO agents (id, name, manifest, status, pid, registered_at, started_at, stopped_at, exit_code)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 record.id.to_string(),
                 record.manifest.name,
@@ -21,6 +21,8 @@ impl Database {
                 record.pid,
                 record.registered_at.to_rfc3339(),
                 record.started_at.map(|t| t.to_rfc3339()),
+                record.stopped_at.map(|t| t.to_rfc3339()),
+                record.exit_code,
             ],
         )?;
         Ok(())
@@ -28,7 +30,7 @@ impl Database {
 
     pub fn get_agent(&self, id: AgentId) -> Result<Option<AgentRecord>, rusqlite::Error> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, manifest, status, pid, registered_at, started_at FROM agents WHERE id = ?1",
+            "SELECT id, manifest, status, pid, registered_at, started_at, stopped_at, exit_code FROM agents WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map(params![id.to_string()], row_to_record)?;
         Ok(rows.next().transpose()?)
@@ -36,7 +38,7 @@ impl Database {
 
     pub fn get_agent_by_name(&self, name: &str) -> Result<Option<AgentRecord>, rusqlite::Error> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, manifest, status, pid, registered_at, started_at FROM agents WHERE name = ?1",
+            "SELECT id, manifest, status, pid, registered_at, started_at, stopped_at, exit_code FROM agents WHERE name = ?1",
         )?;
         let mut rows = stmt.query_map(params![name], row_to_record)?;
         Ok(rows.next().transpose()?)
@@ -44,7 +46,7 @@ impl Database {
 
     pub fn list_agents(&self) -> Result<Vec<AgentSummary>, rusqlite::Error> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, manifest, status, pid, registered_at, started_at FROM agents ORDER BY registered_at",
+            "SELECT id, manifest, status, pid, registered_at, started_at, stopped_at, exit_code FROM agents ORDER BY registered_at",
         )?;
         let rows = stmt.query_map([], row_to_record)?;
         let mut summaries = Vec::new();
@@ -66,11 +68,41 @@ impl Database {
         } else {
             None
         };
+        let stopped_at = match status {
+            AgentStatus::Stopped | AgentStatus::Failed => Some(Utc::now().to_rfc3339()),
+            _ => None,
+        };
         let rows = self.conn.execute(
-            "UPDATE agents SET status = ?1, pid = ?2, started_at = COALESCE(?3, started_at) WHERE id = ?4",
-            params![status_to_str(status), pid, started_at, id.to_string()],
+            "UPDATE agents SET status = ?1, pid = ?2, started_at = COALESCE(?3, started_at), stopped_at = COALESCE(?4, stopped_at) WHERE id = ?5",
+            params![status_to_str(status), pid, started_at, stopped_at, id.to_string()],
         )?;
         Ok(rows > 0)
+    }
+
+    pub fn update_agent_exit(
+        &self,
+        id: AgentId,
+        status: AgentStatus,
+        exit_code: Option<i32>,
+    ) -> Result<bool, rusqlite::Error> {
+        let stopped_at = Utc::now().to_rfc3339();
+        let rows = self.conn.execute(
+            "UPDATE agents SET status = ?1, pid = NULL, stopped_at = ?2, exit_code = ?3 WHERE id = ?4",
+            params![status_to_str(status), stopped_at, exit_code, id.to_string()],
+        )?;
+        Ok(rows > 0)
+    }
+
+    pub fn list_running_agents(&self) -> Result<Vec<AgentRecord>, rusqlite::Error> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, manifest, status, pid, registered_at, started_at, stopped_at, exit_code FROM agents WHERE status = 'running'",
+        )?;
+        let rows = stmt.query_map([], row_to_record)?;
+        let mut records = Vec::new();
+        for row in rows {
+            records.push(row?);
+        }
+        Ok(records)
     }
 
     pub fn delete_agent(&self, id: AgentId) -> Result<bool, rusqlite::Error> {
@@ -106,6 +138,8 @@ fn row_to_record(row: &rusqlite::Row) -> Result<AgentRecord, rusqlite::Error> {
     let pid: Option<u32> = row.get(3)?;
     let registered_at_str: String = row.get(4)?;
     let started_at_str: Option<String> = row.get(5)?;
+    let stopped_at_str: Option<String> = row.get(6)?;
+    let exit_code: Option<i32> = row.get(7)?;
 
     let id = Uuid::parse_str(&id_str).expect("valid uuid in db");
     let manifest: AgentManifest =
@@ -119,6 +153,11 @@ fn row_to_record(row: &rusqlite::Row) -> Result<AgentRecord, rusqlite::Error> {
             .expect("valid datetime")
             .with_timezone(&chrono::Utc)
     });
+    let stopped_at = stopped_at_str.map(|s| {
+        chrono::DateTime::parse_from_rfc3339(&s)
+            .expect("valid datetime")
+            .with_timezone(&chrono::Utc)
+    });
 
     Ok(AgentRecord {
         id,
@@ -127,5 +166,7 @@ fn row_to_record(row: &rusqlite::Row) -> Result<AgentRecord, rusqlite::Error> {
         pid,
         registered_at,
         started_at,
+        stopped_at,
+        exit_code,
     })
 }

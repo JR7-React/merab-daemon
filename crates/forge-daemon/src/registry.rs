@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, RwLockWriteGuard};
 
 use forge_core::{AgentId, AgentRecord, AgentStatus, AgentSummary, ForgeError};
 use forge_store::Database;
@@ -76,6 +76,23 @@ impl AgentRegistry {
         record.status = status;
         record.pid = pid;
         Ok(())
+    }
+
+    pub async fn set_exit_info(&self, id: AgentId, exit_code: Option<i32>) {
+        let mut agents = self.agents.write().await;
+        if let Some(record) = agents.get_mut(&id) {
+            record.exit_code = exit_code;
+            record.stopped_at = Some(chrono::Utc::now());
+        }
+    }
+
+    /// Synchronous mutable access to agents map. Only use at startup before async tasks run.
+    pub fn agents_mut(
+        &self,
+    ) -> Result<RwLockWriteGuard<'_, HashMap<AgentId, AgentRecord>>, ForgeError> {
+        self.agents
+            .try_write()
+            .map_err(|_| ForgeError::Other(anyhow::anyhow!("registry lock held")))
     }
 
     pub async fn remove(&self, id: AgentId) -> Result<AgentRecord, ForgeError> {

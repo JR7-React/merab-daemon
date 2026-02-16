@@ -34,6 +34,8 @@ pub struct AgentManifest {
     pub protocol: ProtocolKind,
     #[serde(default)]
     pub working_dir: Option<String>,
+    #[serde(default)]
+    pub restart_on_failure: bool,
 }
 
 fn default_protocol() -> ProtocolKind {
@@ -48,6 +50,8 @@ pub struct AgentRecord {
     pub pid: Option<u32>,
     pub registered_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
+    pub stopped_at: Option<DateTime<Utc>>,
+    pub exit_code: Option<i32>,
 }
 
 impl AgentRecord {
@@ -59,6 +63,8 @@ impl AgentRecord {
             pid: None,
             registered_at: Utc::now(),
             started_at: None,
+            stopped_at: None,
+            exit_code: None,
         }
     }
 }

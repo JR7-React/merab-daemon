@@ -7,8 +7,11 @@ use jsonrpsee::server::Server;
 use tokio::sync::Mutex;
 use tracing_subscriber::EnvFilter;
 
+use forge_core::AgentStatus;
 use forge_daemon::handlers::{ForgeApiServer, ForgeRpc};
+use forge_daemon::process::is_process_alive;
 use forge_daemon::registry::AgentRegistry;
+use forge_daemon::supervisor::ProcessSupervisor;
 use forge_store::Database;
 
 #[tokio::main]
@@ -29,11 +32,16 @@ async fn main() -> Result<()> {
     let registry = Arc::new(AgentRegistry::new());
     registry.load_from_db(&db)?;
 
+    // Reconcile: mark stale "Running" agents as Failed
+    reconcile_stale_agents(&db, &registry);
+
     let db = Arc::new(Mutex::new(db));
+    let supervisor = Arc::new(ProcessSupervisor::new(registry.clone(), db.clone()));
 
     let rpc = ForgeRpc {
         registry: registry.clone(),
         db,
+        supervisor: supervisor.clone(),
     };
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 9090));
@@ -42,8 +50,54 @@ async fn main() -> Result<()> {
 
     tracing::info!(%addr, "forge daemon listening");
 
-    handle.stopped().await;
+    // Wait for ctrl+c or server stop
+    tokio::select! {
+        _ = handle.stopped() => {
+            tracing::info!("server stopped");
+        }
+        _ = tokio::signal::ctrl_c() => {
+            tracing::info!("ctrl+c received, shutting down");
+        }
+    }
+
+    // Graceful shutdown: stop all supervised agents
+    supervisor.shutdown_all().await;
+    tracing::info!("all agents shut down, exiting");
+
     Ok(())
+}
+
+/// Check agents marked as "Running" in DB — if their process is no longer alive,
+/// mark them as Failed. This handles daemon restarts where agents died while daemon was down.
+fn reconcile_stale_agents(db: &Database, registry: &AgentRegistry) {
+    let running = match db.list_running_agents() {
+        Ok(agents) => agents,
+        Err(e) => {
+            tracing::error!(error = %e, "failed to list running agents for reconciliation");
+            return;
+        }
+    };
+
+    for record in running {
+        let alive = record.pid.is_some_and(|pid| is_process_alive(pid));
+        if !alive {
+            tracing::warn!(
+                id = %record.id,
+                name = %record.manifest.name,
+                pid = ?record.pid,
+                "stale agent detected, marking as failed"
+            );
+            let _ = db.update_agent_exit(record.id, AgentStatus::Failed, None);
+            // Update in-memory registry (sync at startup, before tokio runtime is busy)
+            if let Ok(mut agents) = registry.agents_mut() {
+                if let Some(r) = agents.get_mut(&record.id) {
+                    r.status = AgentStatus::Failed;
+                    r.pid = None;
+                    r.stopped_at = Some(chrono::Utc::now());
+                }
+            }
+        }
+    }
 }
 
 fn dirs_data_dir() -> PathBuf {

@@ -35,6 +35,17 @@ impl Database {
                 exit_code   INTEGER
             );
 
+            CREATE TABLE IF NOT EXISTS messages (
+                id              TEXT PRIMARY KEY,
+                from_agent_id   TEXT NOT NULL,
+                to_agent_id     TEXT,
+                content         TEXT NOT NULL,
+                status          TEXT NOT NULL DEFAULT 'pending',
+                created_at      TEXT NOT NULL,
+                delivered_at    TEXT,
+                FOREIGN KEY (from_agent_id) REFERENCES agents(id)
+            );
+
             CREATE TABLE IF NOT EXISTS memory (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 agent_id    TEXT NOT NULL,

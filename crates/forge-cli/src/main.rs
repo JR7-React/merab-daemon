@@ -50,6 +50,32 @@ enum Commands {
         /// Agent ID (UUID)
         id: String,
     },
+    /// Send a message from one agent to another
+    Send {
+        /// Sender agent ID (UUID)
+        from: String,
+        /// Recipient agent ID (UUID)
+        to: String,
+        /// Message content
+        content: String,
+    },
+    /// Broadcast a message from an agent to all others
+    Broadcast {
+        /// Sender agent ID (UUID)
+        from: String,
+        /// Message content
+        content: String,
+    },
+    /// Get pending messages for an agent
+    Messages {
+        /// Agent ID (UUID)
+        agent_id: String,
+    },
+    /// Acknowledge a received message
+    Ack {
+        /// Message ID (UUID)
+        message_id: String,
+    },
 }
 
 #[tokio::main]
@@ -102,6 +128,34 @@ async fn main() -> Result<()> {
         Commands::Unregister { id } => {
             client.unregister_agent(&id).await?;
             println!("Unregistered agent {id}");
+        }
+        Commands::Send { from, to, content } => {
+            let msg = client.send_message(&from, &to, &content).await?;
+            println!("Message sent (id: {})", msg.id);
+        }
+        Commands::Broadcast { from, content } => {
+            let msg = client.broadcast_message(&from, &content).await?;
+            println!("Broadcast sent (id: {})", msg.id);
+        }
+        Commands::Messages { agent_id } => {
+            let messages = client.get_messages(&agent_id).await?;
+            if messages.is_empty() {
+                println!("No pending messages.");
+            } else {
+                println!("{:<38} {:<38} {:<10} {}", "MESSAGE ID", "FROM", "TYPE", "CONTENT");
+                println!("{}", "-".repeat(100));
+                for m in messages {
+                    let msg_type = if m.to_agent.is_some() { "direct" } else { "broadcast" };
+                    println!(
+                        "{:<38} {:<38} {:<10} {}",
+                        m.id, m.from_agent, msg_type, m.content
+                    );
+                }
+            }
+        }
+        Commands::Ack { message_id } => {
+            client.ack_message(&message_id).await?;
+            println!("Message {message_id} acknowledged.");
         }
     }
 

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use forge_core::{AgentManifest, AgentRecord, AgentStatus, AgentSummary};
+use forge_core::{AgentManifest, AgentRecord, AgentStatus, AgentSummary, Message};
 use forge_store::Database;
 use jsonrpsee::core::async_trait;
 use jsonrpsee::proc_macros::rpc;
@@ -36,6 +36,27 @@ pub trait ForgeApi {
 
     #[method(name = "forge.unregisterAgent")]
     async fn unregister_agent(&self, id: String) -> Result<bool, ErrorObjectOwned>;
+
+    #[method(name = "forge.sendMessage")]
+    async fn send_message(
+        &self,
+        from: String,
+        to: String,
+        content: String,
+    ) -> Result<Message, ErrorObjectOwned>;
+
+    #[method(name = "forge.broadcastMessage")]
+    async fn broadcast_message(
+        &self,
+        from: String,
+        content: String,
+    ) -> Result<Message, ErrorObjectOwned>;
+
+    #[method(name = "forge.getMessages")]
+    async fn get_messages(&self, agent_id: String) -> Result<Vec<Message>, ErrorObjectOwned>;
+
+    #[method(name = "forge.ackMessage")]
+    async fn ack_message(&self, message_id: String) -> Result<bool, ErrorObjectOwned>;
 }
 
 pub struct ForgeRpc {
@@ -181,13 +202,73 @@ impl ForgeApiServer for ForgeRpc {
 
         self.registry.remove(uuid).await.map_err(to_rpc_error)?;
 
-        // Remove from DB
+        // Remove from DB (messages first, then agent)
         {
             let db = self.db.lock().await;
+            db.delete_agent_messages(uuid).map_err(to_rpc_error)?;
             db.delete_agent(uuid).map_err(to_rpc_error)?;
         }
 
         tracing::info!(id = %uuid, "agent unregistered");
+        Ok(true)
+    }
+
+    async fn send_message(
+        &self,
+        from: String,
+        to: String,
+        content: String,
+    ) -> Result<Message, ErrorObjectOwned> {
+        let from_id = parse_id(&from)?;
+        let to_id = parse_id(&to)?;
+
+        // Verify both agents exist
+        self.registry.get(from_id).await.map_err(to_rpc_error)?;
+        self.registry.get(to_id).await.map_err(to_rpc_error)?;
+
+        let msg = Message::new(from_id, Some(to_id), content);
+        {
+            let db = self.db.lock().await;
+            db.insert_message(&msg).map_err(to_rpc_error)?;
+        }
+        tracing::info!(id = %msg.id, from = %from_id, to = %to_id, "message sent");
+        Ok(msg)
+    }
+
+    async fn broadcast_message(
+        &self,
+        from: String,
+        content: String,
+    ) -> Result<Message, ErrorObjectOwned> {
+        let from_id = parse_id(&from)?;
+
+        // Verify sender exists
+        self.registry.get(from_id).await.map_err(to_rpc_error)?;
+
+        let msg = Message::new(from_id, None, content);
+        {
+            let db = self.db.lock().await;
+            db.insert_message(&msg).map_err(to_rpc_error)?;
+        }
+        tracing::info!(id = %msg.id, from = %from_id, "broadcast sent");
+        Ok(msg)
+    }
+
+    async fn get_messages(&self, agent_id: String) -> Result<Vec<Message>, ErrorObjectOwned> {
+        let uuid = parse_id(&agent_id)?;
+        let db = self.db.lock().await;
+        let messages = db.get_messages_for(uuid).map_err(to_rpc_error)?;
+        Ok(messages)
+    }
+
+    async fn ack_message(&self, message_id: String) -> Result<bool, ErrorObjectOwned> {
+        let uuid = parse_id(&message_id)?;
+        let db = self.db.lock().await;
+        let updated = db.acknowledge_message(uuid).map_err(to_rpc_error)?;
+        if !updated {
+            return Err(ErrorObjectOwned::owned(-32000, format!("message not found: {uuid}"), None::<()>));
+        }
+        tracing::info!(id = %uuid, "message acknowledged");
         Ok(true)
     }
 }

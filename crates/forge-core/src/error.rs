@@ -15,6 +15,9 @@ pub enum ForgeError {
     #[error("agent already running: {0}")]
     AlreadyRunning(Uuid),
 
+    #[error("message not found: {0}")]
+    MessageNotFound(Uuid),
+
     #[error("permission denied: {0}")]
     PermissionDenied(String),
 

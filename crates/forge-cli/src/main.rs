@@ -128,6 +128,12 @@ enum Commands {
         #[arg(index = 1)]
         task: String,
     },
+
+    #[command(about = "Execute a plan with persona-based subtasks")]
+    ExecutePlan {
+        #[arg(index = 1)]
+        plan_json: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -367,6 +373,16 @@ async fn main() -> Result<()> {
             match ready_client.ai_plan(&task).await {
                 Ok(plan) => {
                     println!("{}", serde_json::to_string_pretty(&plan).unwrap());
+                }
+                Err(e) => eprintln!("Error: {}", e),
+            }
+        }
+
+        Commands::ExecutePlan { plan_json } => {
+            let ready_client = bootstrap::ensure_ready(&cli.url).await?;
+            match ready_client.ai_execute_plan(&plan_json).await {
+                Ok(result) => {
+                    println!("{}", serde_json::to_string_pretty(&result).unwrap());
                 }
                 Err(e) => eprintln!("Error: {}", e),
             }

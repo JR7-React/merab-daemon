@@ -14,5 +14,7 @@ pub use task::*;
 
 pub mod multi_agent_pipeline;
 
+pub use multi_agent_pipeline::{Persona, Task as PipelineTask, TaskStatus as PipelineTaskStatus};
+
 #[cfg(test)]
 mod tests;

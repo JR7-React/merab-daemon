@@ -2,13 +2,14 @@ use std::sync::Arc;
 
 use forge_ai::{AiClient, AiClientConfig, AiResponse, ChatMessage};
 use forge_config::ForgeConfig;
+use forge_core::multi_agent_pipeline::Task;
 use forge_core::ForgeError;
 use jsonrpsee::types::ErrorObjectOwned;
 
 use super::server::to_rpc_error;
 use crate::mcp_manager::McpManager;
-use crate::prompts::ENGINEER_SYSTEM_PROMPT;
 use crate::planner::PlannerAgent;
+use crate::prompts::{get_persona_prompt, ENGINEER_SYSTEM_PROMPT};
 
 
 /// Build an AiClient from the daemon's config.
@@ -235,4 +236,115 @@ pub async fn handle_ai_plan(
     
     serde_json::to_value(&plan)
         .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))
+}
+
+/// Handle `forge.ai.executePlan` — execute a plan with persona-based subtasks.
+pub async fn handle_ai_execute_plan(
+    config: &ForgeConfig,
+    mcp_manager: &Arc<McpManager>,
+    plan_json: String,
+) -> Result<serde_json::Value, ErrorObjectOwned> {
+    let plan: Task = serde_json::from_str(&plan_json)
+        .map_err(|e| to_rpc_error(ForgeError::InvalidInput(format!("Invalid plan JSON: {}", e))))?;
+
+    let max_steps = config.ai.max_orchestration_steps;
+    let mut results: Vec<SubtaskResult> = Vec::new();
+    let mut global_context: String = String::new();
+
+    for subtask in &plan.subtasks {
+        tracing::info!(
+            subtask_id = %subtask.id,
+            persona = ?subtask.persona,
+            description = %subtask.description,
+            "executing subtask"
+        );
+
+        let persona_prompt = get_persona_prompt(subtask.persona);
+        let dynamic_prompt = build_dynamic_system_prompt(persona_prompt, mcp_manager).await;
+
+        let proxy_url = format!("http://{}:{}", config.daemon.host, config.proxy.port);
+        let ai_config = AiClientConfig {
+            proxy_url,
+            model: config.ai.model.clone(),
+            system_prompt: Some(dynamic_prompt),
+            max_tokens: config.ai.max_tokens,
+            temperature: config.ai.temperature,
+        };
+        let client = AiClient::new(ai_config);
+
+        let mut messages: Vec<ChatMessage> = Vec::new();
+
+        if !global_context.is_empty() {
+            messages.push(ChatMessage::user(format!(
+                "Previous work context:\n{}\n\nNow proceed with your task.",
+                global_context
+            )));
+        }
+
+        messages.push(ChatMessage::user(subtask.description.clone()));
+
+        let mut subtask_output = String::new();
+
+        for _step in 0..max_steps {
+            let response = client
+                .chat(messages.clone())
+                .await
+                .map_err(|e| to_rpc_error(ForgeError::AiError(e.to_string())))?;
+
+            if response.tool_call.is_none() {
+                subtask_output = response.content.clone();
+                break;
+            }
+
+            let tool_call = response.tool_call.clone().unwrap();
+            messages.push(ChatMessage::assistant(&response.content));
+
+            let tool_result = execute_tool_call(config, mcp_manager, &tool_call).await?;
+            messages.push(ChatMessage::user(format!(
+                "Tool '{}' returned:\n{}",
+                tool_call.name, tool_result
+            )));
+        }
+
+        global_context = format!(
+            "{}\n\n## Subtask: {} (Persona: {})\nResult: {}",
+            global_context,
+            subtask.description,
+            subtask.persona,
+            subtask_output
+        );
+
+        results.push(SubtaskResult {
+            id: subtask.id.clone(),
+            description: subtask.description.clone(),
+            persona: subtask.persona.to_string(),
+            output: subtask_output,
+        });
+    }
+
+    let execution_result = ExecutionResult {
+        plan_id: plan.id,
+        plan_description: plan.description,
+        subtasks_executed: results.len(),
+        results,
+    };
+
+    serde_json::to_value(&execution_result)
+        .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))
+}
+
+#[derive(Debug, serde::Serialize)]
+struct SubtaskResult {
+    id: String,
+    description: String,
+    persona: String,
+    output: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct ExecutionResult {
+    plan_id: String,
+    plan_description: String,
+    subtasks_executed: usize,
+    results: Vec<SubtaskResult>,
 }

@@ -137,6 +137,9 @@ pub trait ForgeApi {
 
     #[method(name = "forge.ai.plan")]
     async fn ai_plan(&self, task: String) -> Result<serde_json::Value, ErrorObjectOwned>;
+
+    #[method(name = "forge.ai.executePlan")]
+    async fn ai_execute_plan(&self, plan_json: String) -> Result<serde_json::Value, ErrorObjectOwned>;
 }
 
 pub struct ForgeRpc {
@@ -582,5 +585,9 @@ impl ForgeApiServer for ForgeRpc {
 
     async fn ai_plan(&self, task: String) -> Result<serde_json::Value, ErrorObjectOwned> {
         ai_methods::handle_ai_plan(&self.config, &self.mcp_manager, task).await
+    }
+
+    async fn ai_execute_plan(&self, plan_json: String) -> Result<serde_json::Value, ErrorObjectOwned> {
+        ai_methods::handle_ai_execute_plan(&self.config, &self.mcp_manager, plan_json).await
     }
 }

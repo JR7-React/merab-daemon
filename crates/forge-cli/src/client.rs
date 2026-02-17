@@ -237,4 +237,11 @@ impl ForgeClient {
         let result: serde_json::Value = self.client.request("forge.ai.plan", params).await?;
         Ok(result)
     }
+
+    pub async fn ai_execute_plan(&self, plan_json: &str) -> Result<serde_json::Value> {
+        let mut params = ObjectParams::new();
+        params.insert("plan_json", plan_json)?;
+        let result: serde_json::Value = self.client.request("forge.ai.executePlan", params).await?;
+        Ok(result)
+    }
 }

@@ -1,11 +1,50 @@
 use crate::agent::AgentId;
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Persona {
+    #[default]
+    Engineer,
+    Coder,
+    Reviewer,
+    QA,
+}
+
+impl Persona {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Persona::Engineer => "engineer",
+            Persona::Coder => "coder",
+            Persona::Reviewer => "reviewer",
+            Persona::QA => "qa",
+        }
+    }
+}
+
+impl std::fmt::Display for Persona {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl From<&str> for Persona {
+    fn from(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "coder" => Persona::Coder,
+            "reviewer" => Persona::Reviewer,
+            "qa" | "tester" => Persona::QA,
+            _ => Persona::Engineer,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
     pub id: String,
     pub description: String,
     pub status: TaskStatus,
+    pub persona: Persona,
     pub subtasks: Vec<Task>,
     pub assigned_agent: Option<AgentId>,
 }
@@ -16,51 +55,4 @@ pub enum TaskStatus {
     InProgress,
     Completed,
     Failed,
-}
-
-pub struct Planner;
-
-impl Planner {
-    pub fn new() -> Self {
-        Planner
-    }
-
-    /// Decomposes a high-level task into subtasks.
-    /// In a real implementation, this would use an LLM.
-    pub fn decompose(&self, task_description: &str) -> Task {
-        let task_id = uuid::Uuid::new_v4().to_string();
-        
-        // Simple heuristic decomposition for demonstration
-        let subtasks = vec![
-            Task {
-                id: uuid::Uuid::new_v4().to_string(),
-                description: format!("Research phase for: {}", task_description),
-                status: TaskStatus::Pending,
-                subtasks: vec![],
-                assigned_agent: None,
-            },
-            Task {
-                id: uuid::Uuid::new_v4().to_string(),
-                description: format!("Implementation phase for: {}", task_description),
-                status: TaskStatus::Pending,
-                subtasks: vec![],
-                assigned_agent: None,
-            },
-            Task {
-                id: uuid::Uuid::new_v4().to_string(),
-                description: format!("Verification phase for: {}", task_description),
-                status: TaskStatus::Pending,
-                subtasks: vec![],
-                assigned_agent: None,
-            },
-        ];
-
-        Task {
-            id: task_id,
-            description: task_description.to_string(),
-            status: TaskStatus::Pending,
-            subtasks,
-            assigned_agent: None,
-        }
-    }
 }

@@ -1,6 +1,7 @@
 use anyhow::Result;
 use config::{Config, Environment, File};
 use serde::Deserialize;
+use std::collections::HashMap;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct ForgeConfig {
@@ -33,12 +34,28 @@ pub struct SandboxConfig {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+pub struct PersonaModelConfig {
+    pub model: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct AiConfig {
     pub model: String,
     pub system_prompt: String,
     pub max_tokens: u32,
     pub temperature: f32,
     pub max_orchestration_steps: u32,
+    #[serde(default)]
+    pub personas: HashMap<String, PersonaModelConfig>,
+}
+
+impl AiConfig {
+    pub fn get_model_for_persona(&self, persona: &str) -> String {
+        self.personas
+            .get(persona)
+            .map(|p| p.model.clone())
+            .unwrap_or_else(|| self.model.clone())
+    }
 }
 
 impl Default for ForgeConfig {
@@ -96,7 +113,10 @@ impl ForgeConfig {
             .set_default("ai.system_prompt", defaults.ai.system_prompt)?
             .set_default("ai.max_tokens", defaults.ai.max_tokens as i64)?
             .set_default("ai.temperature", defaults.ai.temperature as f64)?
-            .set_default("ai.max_orchestration_steps", defaults.ai.max_orchestration_steps as i64)?;
+            .set_default(
+                "ai.max_orchestration_steps",
+                defaults.ai.max_orchestration_steps as i64,
+            )?;
 
         // 2. Load from config file (if exists)
         if let Some(config_dir) = dirs::config_dir() {

@@ -8,31 +8,57 @@ use crate::rpc::server::to_rpc_error;
 const PLANNER_SYSTEM_PROMPT: &str = r#"You are an expert Project Manager AI.
 Your goal is to analyze a complex user request and decompose it into a structured plan of executable subtasks.
 
-Output Format:
+## Personas Available
+Assign each subtask to the most appropriate persona:
+- **engineer**: General purpose, good for analysis, research, exploration
+- **coder**: Writing code, implementing features, fixing bugs
+- **reviewer**: Code review, quality assurance, finding issues
+- **qa**: Writing tests, verifying functionality, edge case coverage
+
+## Output Format
 You must output a strictly valid JSON object matching the `Task` structure.
 Example:
 {
   "id": "generated-uuid",
   "description": "Main task description",
   "status": "Pending",
+  "persona": "engineer",
   "assigned_agent": null,
   "subtasks": [
     {
       "id": "generated-uuid-1",
-      "description": "Subtask 1 description",
+      "description": "Implement the feature",
       "status": "Pending",
+      "persona": "coder",
+      "assigned_agent": null,
+      "subtasks": []
+    },
+    {
+      "id": "generated-uuid-2",
+      "description": "Review the implementation",
+      "status": "Pending",
+      "persona": "reviewer",
+      "assigned_agent": null,
+      "subtasks": []
+    },
+    {
+      "id": "generated-uuid-3",
+      "description": "Write tests for the feature",
+      "status": "Pending",
+      "persona": "qa",
       "assigned_agent": null,
       "subtasks": []
     }
   ]
 }
 
-Rules:
+## Rules
 1. Break down the task into logical, sequential steps.
-2. Use descriptive names for tasks.
-3. Keep 'status' as "Pending".
-4. assigned_agent should be null for now.
-5. Do not include any text outside the JSON block.
+2. Assign the most appropriate persona to each subtask.
+3. Use descriptive names for tasks.
+4. Keep 'status' as "Pending".
+5. assigned_agent should be null.
+6. Do not include any text outside the JSON block.
 "#;
 
 pub struct PlannerAgent {

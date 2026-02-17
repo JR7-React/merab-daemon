@@ -614,6 +614,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "forge-ai",
  "forge-core",
  "forge-transport",
  "forge-tui",
@@ -655,6 +656,7 @@ dependencies = [
  "bytes",
  "chrono",
  "dotenv",
+ "forge-ai",
  "forge-config",
  "forge-core",
  "forge-sandbox",

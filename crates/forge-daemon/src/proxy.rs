@@ -23,7 +23,10 @@ pub struct ProxyContext {
     pub http_client: HttpClient,
 }
 
-pub async fn start_proxy_server(addr: SocketAddr, context: Arc<ProxyContext>) -> anyhow::Result<()> {
+pub async fn start_proxy_server(
+    addr: SocketAddr,
+    context: Arc<ProxyContext>,
+) -> anyhow::Result<()> {
     let listener = TcpListener::bind(addr).await?;
     tracing::info!("LLM Proxy listening on http://{}", addr);
 
@@ -51,7 +54,7 @@ async fn handle_request(
         (&Method::POST, "/v1/chat/completions") => handle_chat_completion(req, ctx).await,
         _ => {
             // Forward everything else directly (pass-through)
-            // For MVP we only care about chat completions. 
+            // For MVP we only care about chat completions.
             Ok(Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(Full::new(Bytes::from("Not Found")))
@@ -67,18 +70,33 @@ async fn handle_chat_completion(
     // 1. Read body
     let body_bytes = match req.into_body().collect().await {
         Ok(b) => b.to_bytes(),
-        Err(_) => return Ok(Response::builder().status(StatusCode::BAD_REQUEST).body(Full::new(Bytes::from("Body Error"))).unwrap()),
+        Err(_) => {
+            return Ok(Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(Full::new(Bytes::from("Body Error")))
+                .unwrap());
+        }
     };
 
     let body_str = match String::from_utf8(body_bytes.to_vec()) {
         Ok(s) => s,
-        Err(_) => return Ok(Response::builder().status(StatusCode::BAD_REQUEST).body(Full::new(Bytes::from("Invalid UTF-8"))).unwrap()),
+        Err(_) => {
+            return Ok(Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(Full::new(Bytes::from("Invalid UTF-8")))
+                .unwrap());
+        }
     };
 
     // 2. Parse JSON to normalize
     let json_body: Value = match serde_json::from_str(&body_str) {
         Ok(v) => v,
-        Err(_) => return Ok(Response::builder().status(StatusCode::BAD_REQUEST).body(Full::new(Bytes::from("Invalid JSON"))).unwrap()),
+        Err(_) => {
+            return Ok(Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(Full::new(Bytes::from("Invalid JSON")))
+                .unwrap());
+        }
     };
 
     // Check if streaming is enabled - if so, bypass cache for now
@@ -108,29 +126,38 @@ async fn handle_chat_completion(
                 .unwrap());
         }
     }
-    
+
     tracing::info!(hash = %hash, "Cache MISS");
 
     // 5. Forward to Upstream
     let upstream_res = match forward_request(ctx.clone(), body_bytes.clone(), false).await {
         Ok(res) => res,
-        Err(_) => return Ok(Response::builder().status(StatusCode::INTERNAL_SERVER_ERROR).body(Full::new(Bytes::from("Upstream Error"))).unwrap()),
+        Err(_) => {
+            return Ok(Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Full::new(Bytes::from("Upstream Error")))
+                .unwrap());
+        }
     };
-    
+
     // If successful, store in cache
     if upstream_res.status() == StatusCode::OK {
         // We need to clone the body to store it, but hyper Response body is a stream.
         // forward_request returns a full response here because we waited for it (stream=false logic in forward_request).
         // Wait, forward_request returns Result<Response<Full<Bytes>>, Infallible>.
-        
+
         let (parts, body) = upstream_res.into_parts();
         let body_bytes = body.collect().await.unwrap().to_bytes(); // Should be safe since it's Full<Bytes>
-        
+
         let response_str = String::from_utf8_lossy(&body_bytes).to_string();
-        
+
         // Extract model/provider if possible
-        let model = json_body.get("model").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
-        
+        let model = json_body
+            .get("model")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string();
+
         let entry = CacheEntry {
             hash: hash.clone(),
             request: normalized,
@@ -138,13 +165,16 @@ async fn handle_chat_completion(
             model,
             provider: Some("openai".to_string()), // Simplified
         };
-        
+
         {
             let db = ctx.db.lock().await;
             let _ = db.store_cache(&entry);
         }
-        
-        Ok(Response::from_parts(parts, Full::new(Bytes::from(body_bytes))))
+
+        Ok(Response::from_parts(
+            parts,
+            Full::new(Bytes::from(body_bytes)),
+        ))
     } else {
         Ok(upstream_res)
     }
@@ -157,9 +187,13 @@ async fn forward_request(
 ) -> Result<Response<Full<Bytes>>, Infallible> {
     let client = &ctx.http_client;
 
-    let url = format!("{}/chat/completions", ctx.upstream_url.trim_end_matches('/'));
-    
-    let mut req_builder = client.post(url)
+    let url = format!(
+        "{}/chat/completions",
+        ctx.upstream_url.trim_end_matches('/')
+    );
+
+    let mut req_builder = client
+        .post(url)
         .header(CONTENT_TYPE, "application/json")
         .body(body);
 
@@ -169,17 +203,18 @@ async fn forward_request(
 
     match req_builder.send().await {
         Ok(res) => {
-            let status = StatusCode::from_u16(res.status().as_u16()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            let status = StatusCode::from_u16(res.status().as_u16())
+                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
             let bytes = res.bytes().await.unwrap_or_default();
             Ok(Response::builder()
                 .status(status)
                 .header(CONTENT_TYPE, "application/json")
                 .body(Full::new(bytes))
                 .unwrap())
-        },
+        }
         Err(e) => {
             tracing::error!("Upstream request failed: {}", e);
-             Ok(Response::builder()
+            Ok(Response::builder()
                 .status(StatusCode::BAD_GATEWAY)
                 .body(Full::new(Bytes::from(format!("Upstream Error: {}", e))))
                 .unwrap())

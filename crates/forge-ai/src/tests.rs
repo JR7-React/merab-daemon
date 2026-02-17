@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use crate::types::*;
-    use crate::error::AiError;
     use crate::client::AiClient;
+    use crate::error::AiError;
+    use crate::types::*;
 
     fn test_config() -> AiClientConfig {
         AiClientConfig {

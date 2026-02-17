@@ -9,10 +9,10 @@ use tracing_subscriber::EnvFilter;
 
 use forge_config::ForgeConfig;
 use forge_core::AgentStatus;
-use forge_daemon::a2a_server::{start_a2a_server, A2AContext};
+use forge_daemon::a2a_server::{A2AContext, start_a2a_server};
 use forge_daemon::mcp_manager::McpManager;
 use forge_daemon::process::is_process_alive;
-use forge_daemon::proxy::{start_proxy_server, ProxyContext};
+use forge_daemon::proxy::{ProxyContext, start_proxy_server};
 use forge_daemon::registry::AgentRegistry;
 use forge_daemon::rpc::{ForgeApiServer, ForgeRpc};
 use forge_daemon::supervisor::ProcessSupervisor;
@@ -38,7 +38,7 @@ async fn main() -> Result<()> {
 
     let data_dir = dirs_data_dir().join("forge");
     std::fs::create_dir_all(&data_dir)?;
-    
+
     // Use config db_path if provided, otherwise default
     let db_path = if let Some(path) = &config.daemon.db_path {
         PathBuf::from(path)
@@ -76,7 +76,10 @@ async fn main() -> Result<()> {
     // Start LLM Proxy Server
     if config.proxy.enabled {
         let proxy_upstream = config.proxy.upstream_url.clone();
-        let proxy_key = config.proxy.api_key.clone()
+        let proxy_key = config
+            .proxy
+            .api_key
+            .clone()
             .or_else(|| std::env::var("FORGE_PROXY_API_KEY").ok());
 
         let http_client = reqwest::Client::builder()

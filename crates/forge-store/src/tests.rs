@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use crate::db::Database;
     use crate::CacheEntry;
+    use crate::db::Database;
     use forge_core::*;
     use serde_json::json;
     use uuid::Uuid;
@@ -62,7 +62,9 @@ mod tests {
         let db = test_db();
         let record = AgentRecord::new(sample_manifest("s1"));
         db.insert_agent(&record).unwrap();
-        let updated = db.update_agent_status(record.id, AgentStatus::Running, Some(1234)).unwrap();
+        let updated = db
+            .update_agent_status(record.id, AgentStatus::Running, Some(1234))
+            .unwrap();
         assert!(updated);
         let fetched = db.get_agent(record.id).unwrap().unwrap();
         assert_eq!(fetched.status, AgentStatus::Running);
@@ -74,7 +76,8 @@ mod tests {
         let db = test_db();
         let record = AgentRecord::new(sample_manifest("e1"));
         db.insert_agent(&record).unwrap();
-        db.update_agent_exit(record.id, AgentStatus::Failed, Some(1)).unwrap();
+        db.update_agent_exit(record.id, AgentStatus::Failed, Some(1))
+            .unwrap();
         let fetched = db.get_agent(record.id).unwrap().unwrap();
         assert_eq!(fetched.status, AgentStatus::Failed);
         assert_eq!(fetched.exit_code, Some(1));
@@ -107,8 +110,14 @@ mod tests {
         let from = Uuid::new_v4();
         let to = Uuid::new_v4();
         // Register agents first (foreign key)
-        let r1 = AgentRecord { id: from, ..AgentRecord::new(sample_manifest("msg_from")) };
-        let r2 = AgentRecord { id: to, ..AgentRecord::new(sample_manifest("msg_to")) };
+        let r1 = AgentRecord {
+            id: from,
+            ..AgentRecord::new(sample_manifest("msg_from"))
+        };
+        let r2 = AgentRecord {
+            id: to,
+            ..AgentRecord::new(sample_manifest("msg_to"))
+        };
         db.insert_agent(&r1).unwrap();
         db.insert_agent(&r2).unwrap();
 
@@ -125,8 +134,14 @@ mod tests {
         let db = test_db();
         let from = Uuid::new_v4();
         let to = Uuid::new_v4();
-        let r1 = AgentRecord { id: from, ..AgentRecord::new(sample_manifest("ack_from")) };
-        let r2 = AgentRecord { id: to, ..AgentRecord::new(sample_manifest("ack_to")) };
+        let r1 = AgentRecord {
+            id: from,
+            ..AgentRecord::new(sample_manifest("ack_from"))
+        };
+        let r2 = AgentRecord {
+            id: to,
+            ..AgentRecord::new(sample_manifest("ack_to"))
+        };
         db.insert_agent(&r1).unwrap();
         db.insert_agent(&r2).unwrap();
 
@@ -145,8 +160,14 @@ mod tests {
         let db = test_db();
         let from = Uuid::new_v4();
         let to = Uuid::new_v4();
-        let r1 = AgentRecord { id: from, ..AgentRecord::new(sample_manifest("del_from")) };
-        let r2 = AgentRecord { id: to, ..AgentRecord::new(sample_manifest("del_to")) };
+        let r1 = AgentRecord {
+            id: from,
+            ..AgentRecord::new(sample_manifest("del_from"))
+        };
+        let r2 = AgentRecord {
+            id: to,
+            ..AgentRecord::new(sample_manifest("del_to"))
+        };
         db.insert_agent(&r1).unwrap();
         db.insert_agent(&r2).unwrap();
 
@@ -163,8 +184,14 @@ mod tests {
         let db = test_db();
         let from = Uuid::new_v4();
         let other = Uuid::new_v4();
-        let r1 = AgentRecord { id: from, ..AgentRecord::new(sample_manifest("bc_from")) };
-        let r2 = AgentRecord { id: other, ..AgentRecord::new(sample_manifest("bc_other")) };
+        let r1 = AgentRecord {
+            id: from,
+            ..AgentRecord::new(sample_manifest("bc_from"))
+        };
+        let r2 = AgentRecord {
+            id: other,
+            ..AgentRecord::new(sample_manifest("bc_other"))
+        };
         db.insert_agent(&r1).unwrap();
         db.insert_agent(&r2).unwrap();
 
@@ -224,7 +251,8 @@ mod tests {
             TaskStatus::Completed,
             Some("result".to_string()),
             None,
-        ).unwrap();
+        )
+        .unwrap();
         let fetched = db.get_task(&task.id.to_string()).unwrap();
         assert_eq!(fetched.status, TaskStatus::Completed);
         assert_eq!(fetched.output, Some("result".to_string()));
@@ -294,8 +322,10 @@ mod tests {
     #[test]
     fn test_list_memory_keys() {
         let db = test_db();
-        db.put_memory("app.setting1", &json!(1), None, None).unwrap();
-        db.put_memory("app.setting2", &json!(2), None, None).unwrap();
+        db.put_memory("app.setting1", &json!(1), None, None)
+            .unwrap();
+        db.put_memory("app.setting2", &json!(2), None, None)
+            .unwrap();
         db.put_memory("other.key", &json!(3), None, None).unwrap();
 
         let all = db.list_memory_keys(None).unwrap();
@@ -309,7 +339,8 @@ mod tests {
     fn test_memory_ttl_expiration() {
         let db = test_db();
         // Insert with a normal TTL first, then override expires_at to a past date via SQL
-        db.put_memory("ttl_key", &json!("temp"), None, None).unwrap();
+        db.put_memory("ttl_key", &json!("temp"), None, None)
+            .unwrap();
         // Override expires_at to a past date
         db.conn.execute(
             "UPDATE shared_memory SET expires_at = '2000-01-01T00:00:00+00:00' WHERE key = 'ttl_key'",

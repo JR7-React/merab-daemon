@@ -11,6 +11,7 @@ path = "src/main.rs"
 forge-core = { path = "../forge-core" }
 forge-transport = { path = "../forge-transport" }
 forge-tui = { path = "../forge-tui" }
+forge-ai = { path = "../forge-ai" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

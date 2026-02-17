@@ -3,8 +3,8 @@ use tracing;
 
 use crate::error::AiError;
 use crate::types::{
-    AiClientConfig, AiResponse, ChatCompletionRequest, ChatCompletionResponse,
-    ChatMessage, ToolCall,
+    AiClientConfig, AiResponse, ChatCompletionRequest, ChatCompletionResponse, ChatMessage,
+    ToolCall,
 };
 
 /// Client that communicates with the LLM via the local proxy.
@@ -53,12 +53,7 @@ impl AiClient {
 
         tracing::debug!(url = %url, model = %request.model, "sending chat request");
 
-        let resp = self
-            .http
-            .post(&url)
-            .json(&request)
-            .send()
-            .await?;
+        let resp = self.http.post(&url).json(&request).send().await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -81,11 +76,7 @@ impl AiClient {
     /// Parse the LLM response, extracting tool calls if present.
     fn parse_response(&self, resp: ChatCompletionResponse) -> Result<AiResponse, AiError> {
         let choice = resp.choices.first().ok_or(AiError::EmptyResponse)?;
-        let content = choice
-            .message
-            .content
-            .clone()
-            .unwrap_or_default();
+        let content = choice.message.content.clone().unwrap_or_default();
 
         // Try to detect a tool_call JSON block in the content
         let tool_call = Self::extract_tool_call(&content);

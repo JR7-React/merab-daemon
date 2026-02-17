@@ -48,7 +48,13 @@ impl ProcessSupervisor {
         let handles = self.handles.clone();
 
         let monitor_handle = tokio::spawn(monitor_task(
-            agent_id, child, shutdown_rx, registry, db, handles, manifest,
+            agent_id,
+            child,
+            shutdown_rx,
+            registry,
+            db,
+            handles,
+            manifest,
         ));
 
         let mut map = self.handles.lock().await;
@@ -61,9 +67,9 @@ impl ProcessSupervisor {
             },
         );
     }
-    
+
     // ... stop_agent and shutdown_all remain similar but adapt to new ProcessHandle ...
-    
+
     /// Stop a specific agent. Sends shutdown signal, waits for monitor to finish.
     pub async fn stop_agent(&self, agent_id: AgentId) -> bool {
         let handle = {
@@ -74,8 +80,8 @@ impl ProcessSupervisor {
         if let Some(ph) = handle {
             let _ = ph.shutdown_tx.send(());
             // JobObject will be dropped here, ensuring kill-on-close if configured
-            let _ = tokio::time::timeout(std::time::Duration::from_secs(5), ph.monitor_handle)
-                .await;
+            let _ =
+                tokio::time::timeout(std::time::Duration::from_secs(5), ph.monitor_handle).await;
             true
         } else {
             false
@@ -92,8 +98,8 @@ impl ProcessSupervisor {
         for (id, ph) in handles {
             tracing::info!(id = %id, "shutting down agent");
             let _ = ph.shutdown_tx.send(());
-            let _ = tokio::time::timeout(std::time::Duration::from_secs(5), ph.monitor_handle)
-                .await;
+            let _ =
+                tokio::time::timeout(std::time::Duration::from_secs(5), ph.monitor_handle).await;
         }
     }
 
@@ -198,12 +204,12 @@ fn restart_agent(
         match cmd.spawn() {
             Ok(child) => {
                 let pid = child.id();
-                
+
                 // Assign to Job Object
                 if let (Some(pid), Some(job)) = (pid, &job_object) {
-                     if let Err(e) = job.assign_process(pid) {
-                         tracing::warn!(id = %agent_id, error = %e, "failed to assign restarted process to job object");
-                     }
+                    if let Err(e) = job.assign_process(pid) {
+                        tracing::warn!(id = %agent_id, error = %e, "failed to assign restarted process to job object");
+                    }
                 }
 
                 if let Err(e) = registry
@@ -227,7 +233,13 @@ fn restart_agent(
                 let manifest2 = manifest.clone();
 
                 let monitor_handle = tokio::spawn(monitor_task(
-                    agent_id, child, shutdown_rx, reg, db2, handles2, manifest2,
+                    agent_id,
+                    child,
+                    shutdown_rx,
+                    reg,
+                    db2,
+                    handles2,
+                    manifest2,
                 ));
 
                 let mut map = handles.lock().await;

@@ -17,7 +17,9 @@ impl AgentRegistry {
     }
 
     pub fn load_from_db(&self, db: &Database) -> Result<(), ForgeError> {
-        let summaries = db.list_agents().map_err(|e| ForgeError::Store(e.to_string()))?;
+        let summaries = db
+            .list_agents()
+            .map_err(|e| ForgeError::Store(e.to_string()))?;
         // We need full records, so fetch each one
         let mut map = HashMap::new();
         for summary in &summaries {
@@ -67,9 +69,7 @@ impl AgentRegistry {
         pid: Option<u32>,
     ) -> Result<(), ForgeError> {
         let mut agents = self.agents.write().await;
-        let record = agents
-            .get_mut(&id)
-            .ok_or(ForgeError::AgentNotFound(id))?;
+        let record = agents.get_mut(&id).ok_or(ForgeError::AgentNotFound(id))?;
         if status == AgentStatus::Running {
             record.started_at = Some(chrono::Utc::now());
         }

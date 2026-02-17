@@ -61,14 +61,17 @@ async fn handle_request(
 async fn handle_agent_card(ctx: Arc<A2AContext>) -> Result<Response<Full<Bytes>>, Infallible> {
     // Optimized: get tools from index (O(1) access to memory map)
     let tools = ctx.mcp_manager.get_all_tools().await;
-    
-    let skills = tools.into_iter().map(|t| AgentSkill {
-        id: t.name.clone(),
-        name: t.name,
-        description: t.description,
-        input_modes: vec!["text".to_string()],
-        output_modes: vec!["text".to_string()],
-    }).collect();
+
+    let skills = tools
+        .into_iter()
+        .map(|t| AgentSkill {
+            id: t.name.clone(),
+            name: t.name,
+            description: t.description,
+            input_modes: vec!["text".to_string()],
+            output_modes: vec!["text".to_string()],
+        })
+        .collect();
 
     let card = AgentCard {
         name: "Forge Runtime".to_string(),
@@ -99,15 +102,22 @@ async fn handle_rpc(
 ) -> Result<Response<Full<Bytes>>, Infallible> {
     let body_bytes = match req.into_body().collect().await {
         Ok(b) => b.to_bytes(),
-        Err(_) => return Ok(Response::builder().status(StatusCode::BAD_REQUEST).body(Full::new(Bytes::from("Body Error"))).unwrap()),
+        Err(_) => {
+            return Ok(Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(Full::new(Bytes::from("Body Error")))
+                .unwrap());
+        }
     };
-    
+
     let rpc_req: RpcRequest = match serde_json::from_slice(&body_bytes) {
         Ok(r) => r,
-        Err(_) => return Ok(Response::builder()
-            .status(StatusCode::BAD_REQUEST)
-            .body(Full::new(Bytes::from("Invalid JSON")))
-            .unwrap()),
+        Err(_) => {
+            return Ok(Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(Full::new(Bytes::from("Invalid JSON")))
+                .unwrap());
+        }
     };
 
     let result = match rpc_req.method.as_str() {
@@ -142,7 +152,7 @@ async fn handle_task_send(params: Option<Value>, ctx: Arc<A2AContext>) -> Result
     let task_id = Uuid::new_v4();
     let task = Task {
         id: task_id,
-        source: None, 
+        source: None,
         target: req.skill.clone(),
         input: req.input.to_string(),
         status: TaskStatus::Pending,
@@ -170,17 +180,21 @@ async fn handle_task_send(params: Option<Value>, ctx: Arc<A2AContext>) -> Result
     Ok(serde_json::to_value(TaskResponse {
         task_id: task_id.to_string(),
         status: "pending".to_string(),
-    }).unwrap())
+    })
+    .unwrap())
 }
 
 async fn handle_task_get(params: Option<Value>, ctx: Arc<A2AContext>) -> Result<Value, String> {
     let id_val = params.and_then(|p| p.get("task_id").cloned());
-    let id_str = id_val.and_then(|v| v.as_str().map(|s| s.to_string()))
+    let id_str = id_val
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
         .ok_or("Missing task_id")?;
-        
+
     let db = ctx.db.lock().await;
-    let task = db.get_task(&id_str).map_err(|_e| "Task not found".to_string())?;
-    
+    let task = db
+        .get_task(&id_str)
+        .map_err(|_e| "Task not found".to_string())?;
+
     Ok(serde_json::json!({
         "task_id": task.id.to_string(),
         "status": task.status.to_string(),
@@ -195,40 +209,33 @@ async fn execute_task(ctx: Arc<A2AContext>, task_id: Uuid, skill: String, input:
         let db = ctx.db.lock().await;
         let _ = db.update_task_status(&task_id.to_string(), TaskStatus::Running, None, None);
     }
-    
+
     // Optimized: Find agent directly from index (O(1))
     let target_client = ctx.mcp_manager.find_agent_for_tool(&skill).await;
-    
+
     let result = if let Some(client) = target_client {
         let args = match input {
             Value::Object(map) => Some(map),
             Value::Null => None,
-            _ => None // Should probably improve error handling for non-object args
+            _ => None, // Should probably improve error handling for non-object args
         };
 
         match client.call_tool(skill, args).await {
-            Ok(res) => {
-                match serde_json::to_string(&res.content) {
-                    Ok(s) => Ok(s),
-                    Err(e) => Err(format!("Serialization error: {}", e)),
-                }
-            }
+            Ok(res) => match serde_json::to_string(&res.content) {
+                Ok(s) => Ok(s),
+                Err(e) => Err(format!("Serialization error: {}", e)),
+            },
             Err(e) => Err(format!("Tool execution failed: {}", e)),
         }
     } else {
         Err(format!("No agent found with skill: {}", skill))
     };
-    
+
     let (status, output, error) = match result {
         Ok(val) => (TaskStatus::Completed, Some(val), None),
         Err(e) => (TaskStatus::Failed, None, Some(e)),
     };
-    
+
     let db = ctx.db.lock().await;
-    let _ = db.update_task_status(
-        &task_id.to_string(),
-        status,
-        output,
-        error
-    );
+    let _ = db.update_task_status(&task_id.to_string(), status, output, error);
 }

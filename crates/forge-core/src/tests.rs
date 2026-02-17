@@ -52,23 +52,42 @@ mod tests {
             version = "1.0.0"
             command = "test"
         "#;
-        let manifest: AgentManifest = toml::from_str(toml_str).expect("parse manifest without protocol");
+        let manifest: AgentManifest =
+            toml::from_str(toml_str).expect("parse manifest without protocol");
         assert_eq!(manifest.protocol, ProtocolKind::Native);
     }
 
     // --- ProtocolKind serialization ---
     #[test]
     fn test_protocol_kind_serialization() {
-        assert_eq!(serde_json::to_string(&ProtocolKind::Mcp).unwrap(), r#""mcp""#);
-        assert_eq!(serde_json::to_string(&ProtocolKind::A2a).unwrap(), r#""a2a""#);
-        assert_eq!(serde_json::to_string(&ProtocolKind::Native).unwrap(), r#""native""#);
+        assert_eq!(
+            serde_json::to_string(&ProtocolKind::Mcp).unwrap(),
+            r#""mcp""#
+        );
+        assert_eq!(
+            serde_json::to_string(&ProtocolKind::A2a).unwrap(),
+            r#""a2a""#
+        );
+        assert_eq!(
+            serde_json::to_string(&ProtocolKind::Native).unwrap(),
+            r#""native""#
+        );
     }
 
     #[test]
     fn test_protocol_kind_deserialization() {
-        assert_eq!(serde_json::from_str::<ProtocolKind>(r#""mcp""#).unwrap(), ProtocolKind::Mcp);
-        assert_eq!(serde_json::from_str::<ProtocolKind>(r#""a2a""#).unwrap(), ProtocolKind::A2a);
-        assert_eq!(serde_json::from_str::<ProtocolKind>(r#""native""#).unwrap(), ProtocolKind::Native);
+        assert_eq!(
+            serde_json::from_str::<ProtocolKind>(r#""mcp""#).unwrap(),
+            ProtocolKind::Mcp
+        );
+        assert_eq!(
+            serde_json::from_str::<ProtocolKind>(r#""a2a""#).unwrap(),
+            ProtocolKind::A2a
+        );
+        assert_eq!(
+            serde_json::from_str::<ProtocolKind>(r#""native""#).unwrap(),
+            ProtocolKind::Native
+        );
     }
 
     // --- AgentRecord::new ---
@@ -160,9 +179,21 @@ mod tests {
     // --- AgentStatus serialization ---
     #[test]
     fn test_agent_status_serialization() {
-        assert_eq!(serde_json::to_string(&AgentStatus::Registered).unwrap(), r#""registered""#);
-        assert_eq!(serde_json::to_string(&AgentStatus::Running).unwrap(), r#""running""#);
-        assert_eq!(serde_json::to_string(&AgentStatus::Stopped).unwrap(), r#""stopped""#);
-        assert_eq!(serde_json::to_string(&AgentStatus::Failed).unwrap(), r#""failed""#);
+        assert_eq!(
+            serde_json::to_string(&AgentStatus::Registered).unwrap(),
+            r#""registered""#
+        );
+        assert_eq!(
+            serde_json::to_string(&AgentStatus::Running).unwrap(),
+            r#""running""#
+        );
+        assert_eq!(
+            serde_json::to_string(&AgentStatus::Stopped).unwrap(),
+            r#""stopped""#
+        );
+        assert_eq!(
+            serde_json::to_string(&AgentStatus::Failed).unwrap(),
+            r#""failed""#
+        );
     }
 }

@@ -12,6 +12,7 @@ use forge_store::Database;
 use jsonrpsee::core::client::ClientT;
 use jsonrpsee::core::params::ObjectParams;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
+use jsonrpsee::rpc_params;
 use jsonrpsee::server::Server;
 use serde_json::json;
 use tokio::sync::Mutex;
@@ -122,10 +123,7 @@ async fn test_get_agent() {
 
     let mut params = ObjectParams::new();
     params.insert("id", record.id.to_string()).unwrap();
-    let fetched: AgentRecord = client
-        .request("forge.getAgent", params)
-        .await
-        .expect("get");
+    let fetched: AgentRecord = client.request("forge.getAgent", params).await.expect("get");
     assert_eq!(fetched.id, record.id);
 }
 
@@ -210,9 +208,7 @@ async fn test_memory_put_get_delete() {
     let mut params = ObjectParams::new();
     params.insert("key", "test.key").unwrap();
     params.insert("value", &json!({"hello": "world"})).unwrap();
-    params
-        .insert("ttl_seconds", Option::<u64>::None)
-        .unwrap();
+    params.insert("ttl_seconds", Option::<u64>::None).unwrap();
     let ok: bool = client
         .request("forge.memory.put", params)
         .await
@@ -283,9 +279,7 @@ async fn test_memory_list() {
         let mut params = ObjectParams::new();
         params.insert("key", *key).unwrap();
         params.insert("value", &json!(1)).unwrap();
-        params
-            .insert("ttl_seconds", Option::<u64>::None)
-            .unwrap();
+        params.insert("ttl_seconds", Option::<u64>::None).unwrap();
         let _: bool = client
             .request("forge.memory.put", params)
             .await
@@ -294,9 +288,7 @@ async fn test_memory_list() {
 
     // List all
     let mut params = ObjectParams::new();
-    params
-        .insert("prefix", Option::<String>::None)
-        .unwrap();
+    params.insert("prefix", Option::<String>::None).unwrap();
     let keys: Vec<String> = client
         .request("forge.memory.list", params)
         .await
@@ -324,4 +316,46 @@ async fn test_system_status() {
         .expect("status");
     assert_eq!(status.agents.len(), 0);
     assert!(status.node_info.uptime_seconds < 10);
+}
+
+// ---- AI RPC tests ----
+
+#[tokio::test]
+async fn test_ai_chat_method_exists() {
+    let (client, _addr) = setup().await;
+    let msg = "Hello from test";
+    let ctx: Vec<forge_ai::ChatMessage> = vec![];
+    let ctx_json = serde_json::to_string(&ctx).unwrap();
+
+    let res: Result<forge_ai::AiResponse, _> = client
+        .request("forge.ai.chat", rpc_params![msg, ctx_json])
+        .await;
+
+    if let Err(e) = res {
+        let err_str = format!("{:?}", e);
+        assert!(
+            !err_str.contains("-32601"),
+            "forge.ai.chat method not found: {}",
+            err_str
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_ai_orchestrate_method_exists() {
+    let (client, _addr) = setup().await;
+    let task = "Analyze this";
+
+    let res: Result<forge_ai::AiResponse, _> = client
+        .request("forge.ai.orchestrate", rpc_params![task])
+        .await;
+
+    if let Err(e) = res {
+        let err_str = format!("{:?}", e);
+        assert!(
+            !err_str.contains("-32601"),
+            "forge.ai.orchestrate method not found: {}",
+            err_str
+        );
+    }
 }

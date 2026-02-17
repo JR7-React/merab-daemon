@@ -5,8 +5,8 @@ use forge_config::ForgeConfig;
 use forge_core::ForgeError;
 use jsonrpsee::types::ErrorObjectOwned;
 
-use crate::mcp_manager::McpManager;
 use super::server::to_rpc_error;
+use crate::mcp_manager::McpManager;
 
 /// Build an AiClient from the daemon's config.
 pub fn build_ai_client(config: &ForgeConfig) -> Result<AiClient, ErrorObjectOwned> {
@@ -56,11 +56,7 @@ pub async fn handle_ai_chat(
 ) -> Result<AiResponse, ErrorObjectOwned> {
     let mut client = build_ai_client(config)?;
 
-    let dynamic_prompt = build_dynamic_system_prompt(
-        &config.ai.system_prompt,
-        mcp_manager,
-    )
-    .await;
+    let dynamic_prompt = build_dynamic_system_prompt(&config.ai.system_prompt, mcp_manager).await;
     client.set_system_prompt(dynamic_prompt);
 
     let mut messages = context;
@@ -81,11 +77,7 @@ pub async fn handle_ai_orchestrate(
 ) -> Result<AiResponse, ErrorObjectOwned> {
     let mut client = build_ai_client(config)?;
 
-    let dynamic_prompt = build_dynamic_system_prompt(
-        &config.ai.system_prompt,
-        mcp_manager,
-    )
-    .await;
+    let dynamic_prompt = build_dynamic_system_prompt(&config.ai.system_prompt, mcp_manager).await;
     client.set_system_prompt(dynamic_prompt);
 
     // Step 1: Ask LLM to analyze the task
@@ -108,9 +100,7 @@ pub async fn handle_ai_orchestrate(
     let mcp_client = mcp_manager
         .find_agent_for_tool(&tool_call.name)
         .await
-        .ok_or_else(|| {
-            to_rpc_error(ForgeError::ToolNotFound(tool_call.name.clone()))
-        })?;
+        .ok_or_else(|| to_rpc_error(ForgeError::ToolNotFound(tool_call.name.clone())))?;
 
     let args = match tool_call.arguments {
         serde_json::Value::Object(map) => Some(map),
@@ -121,10 +111,12 @@ pub async fn handle_ai_orchestrate(
     let tool_result = mcp_client
         .call_tool(tool_call.name.clone(), args)
         .await
-        .map_err(|e| to_rpc_error(ForgeError::AiError(format!(
-            "tool '{}' failed: {}",
-            tool_call.name, e
-        ))))?;
+        .map_err(|e| {
+            to_rpc_error(ForgeError::AiError(format!(
+                "tool '{}' failed: {}",
+                tool_call.name, e
+            )))
+        })?;
 
     let tool_result_str = serde_json::to_string(&tool_result)
         .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))?;

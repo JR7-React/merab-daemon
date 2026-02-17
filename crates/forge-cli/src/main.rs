@@ -1,10 +1,12 @@
 mod client;
 
+use std::io::{Write, stdin, stdout};
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use forge_ai::{ChatMessage, ChatRole};
 use forge_core::AgentManifest;
 
 use client::ForgeClient;
@@ -112,6 +114,13 @@ enum Commands {
     Memory(MemoryCommands),
     /// Monitor the system in real-time (TUI)
     Monitor,
+    /// Chat with Forge AI
+    Chat,
+    /// Ask a single question to Forge AI (orchestration)
+    Ask {
+        /// The question or task
+        question: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -124,13 +133,9 @@ enum MemoryCommands {
         ttl: Option<u64>,
     },
     /// Retrieve a value from shared memory
-    Get {
-        key: String,
-    },
+    Get { key: String },
     /// Delete a value from shared memory
-    Delete {
-        key: String,
-    },
+    Delete { key: String },
     /// List keys in shared memory
     List {
         #[arg(long)]
@@ -152,14 +157,20 @@ async fn main() -> Result<()> {
             let content = std::fs::read_to_string(&manifest)?;
             let agent_manifest: AgentManifest = toml::from_str(&content)?;
             let record = client.register_agent(agent_manifest).await?;
-            println!("Registered agent: {} (id: {})", record.manifest.name, record.id);
+            println!(
+                "Registered agent: {} (id: {})",
+                record.manifest.name, record.id
+            );
         }
         Commands::List => {
             let agents = client.list_agents().await?;
             if agents.is_empty() {
                 println!("No agents registered.");
             } else {
-                println!("{:<38} {:<20} {:<12} {:<8} {:>6}", "ID", "NAME", "PROTOCOL", "STATUS", "PID");
+                println!(
+                    "{:<38} {:<20} {:<12} {:<8} {:>6}",
+                    "ID", "NAME", "PROTOCOL", "STATUS", "PID"
+                );
                 println!("{}", "-".repeat(84));
                 for a in agents {
                     println!(
@@ -179,7 +190,10 @@ async fn main() -> Result<()> {
         }
         Commands::Start { id } => {
             let record = client.start_agent(&id).await?;
-            println!("Started agent {} (pid: {:?})", record.manifest.name, record.pid);
+            println!(
+                "Started agent {} (pid: {:?})",
+                record.manifest.name, record.pid
+            );
         }
         Commands::Stop { id } => {
             let record = client.stop_agent(&id).await?;
@@ -202,10 +216,17 @@ async fn main() -> Result<()> {
             if messages.is_empty() {
                 println!("No pending messages.");
             } else {
-                println!("{:<38} {:<38} {:<10} {}", "MESSAGE ID", "FROM", "TYPE", "CONTENT");
+                println!(
+                    "{:<38} {:<38} {:<10} {}",
+                    "MESSAGE ID", "FROM", "TYPE", "CONTENT"
+                );
                 println!("{}", "-".repeat(100));
                 for m in messages {
-                    let msg_type = if m.to_agent.is_some() { "direct" } else { "broadcast" };
+                    let msg_type = if m.to_agent.is_some() {
+                        "direct"
+                    } else {
+                        "broadcast"
+                    };
                     println!(
                         "{:<38} {:<38} {:<10} {}",
                         m.id, m.from_agent, msg_type, m.content
@@ -248,18 +269,21 @@ async fn main() -> Result<()> {
             let args: serde_json::Value = serde_json::from_str(&input)?;
             println!("Sending task to {}...", url);
             let response = client.a2a_send(&url, &skill, args).await?;
-            println!("Task submitted. ID: {} (Status: {})", response.task_id, response.status);
-            
+            println!(
+                "Task submitted. ID: {} (Status: {})",
+                response.task_id, response.status
+            );
+
             let mut status = response.status;
             while status != "completed" && status != "failed" && status != "cancelled" {
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                 print!(".");
                 use std::io::Write;
                 std::io::stdout().flush()?;
-                
+
                 let details = client.a2a_get_task(&url, &response.task_id).await?;
                 status = details.status;
-                
+
                 if status == "completed" {
                     println!("\nTask Completed!");
                     println!("Output: {}", serde_json::to_string_pretty(&details.output)?);
@@ -271,16 +295,15 @@ async fn main() -> Result<()> {
         }
         Commands::Memory(cmd) => match cmd {
             MemoryCommands::Put { key, value, ttl } => {
-                let json_value: serde_json::Value = serde_json::from_str(&value).unwrap_or(serde_json::Value::String(value));
+                let json_value: serde_json::Value =
+                    serde_json::from_str(&value).unwrap_or(serde_json::Value::String(value));
                 client.memory_put(&key, json_value, ttl).await?;
                 println!("Stored key: {}", key);
             }
-            MemoryCommands::Get { key } => {
-                match client.memory_get(&key).await? {
-                    Some(val) => println!("{}", serde_json::to_string_pretty(&val)?),
-                    None => println!("Key not found or expired."),
-                }
-            }
+            MemoryCommands::Get { key } => match client.memory_get(&key).await? {
+                Some(val) => println!("{}", serde_json::to_string_pretty(&val)?),
+                None => println!("Key not found or expired."),
+            },
             MemoryCommands::Delete { key } => {
                 let deleted = client.memory_delete(&key).await?;
                 if deleted {
@@ -303,14 +326,58 @@ async fn main() -> Result<()> {
         Commands::Monitor => {
             let app = forge_tui::TuiApp::new();
             let client = Arc::new(client);
-            
+
             forge_tui::run_tui(app, move || {
                 let client = client.clone();
-                async move {
-                    client.get_system_status().await
-                }
-            }).await?;
+                async move { client.get_system_status().await }
+            })
+            .await?;
         }
+        Commands::Chat => {
+            println!("Forge AI Chat (type 'quit' or 'exit' to stop)");
+            println!("{}", "-".repeat(50));
+
+            let mut context: Vec<ChatMessage> = Vec::new();
+
+            loop {
+                print!("> ");
+                stdout().flush()?;
+
+                let mut input = String::new();
+                stdin().read_line(&mut input)?;
+                let input = input.trim();
+
+                if input.eq_ignore_ascii_case("quit") || input.eq_ignore_ascii_case("exit") {
+                    break;
+                }
+
+                if input.is_empty() {
+                    continue;
+                }
+
+                match client.ai_chat(input, context.clone()).await {
+                    Ok(resp) => {
+                        println!("\nAI: {}\n", resp.content);
+                        context.push(ChatMessage::user(input));
+                        context.push(ChatMessage::assistant(resp.content));
+
+                        if let Some(tool) = resp.tool_call {
+                            println!("[Tool Call: {}]", tool.name);
+                        }
+                    }
+                    Err(e) => println!("Error: {}", e),
+                }
+            }
+        }
+        Commands::Ask { question } => match client.ai_orchestrate(&question).await {
+            Ok(resp) => {
+                println!("{}", resp.content);
+                if let Some(tool) = resp.tool_call {
+                    println!("\n[Orchestrated Tool Call: {}]", tool.name);
+                }
+            }
+            Err(e) => eprintln!("Error: {}", e),
+        },
     }
 
     Ok(())

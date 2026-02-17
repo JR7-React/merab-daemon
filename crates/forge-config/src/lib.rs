@@ -1,6 +1,6 @@
-use serde::Deserialize;
 use anyhow::Result;
-use config::{Config, File, Environment};
+use config::{Config, Environment, File};
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct ForgeConfig {
@@ -61,7 +61,9 @@ impl Default for ForgeConfig {
             },
             ai: AiConfig {
                 model: "openai/gpt-3.5-turbo".to_string(),
-                system_prompt: "You are Forge AI, a helpful assistant that can orchestrate tools and agents.".to_string(),
+                system_prompt:
+                    "You are Forge AI, a helpful assistant that can orchestrate tools and agents."
+                        .to_string(),
                 max_tokens: 1024,
                 temperature: 0.7,
             },
@@ -75,7 +77,7 @@ impl ForgeConfig {
 
         // 1. Start with defaults (manually, as config-rs doesn't use Default impl directly easily in builder)
         let defaults = Self::default();
-        
+
         builder = builder
             .set_default("daemon.host", defaults.daemon.host)?
             .set_default("daemon.rpc_port", defaults.daemon.rpc_port as i64)?
@@ -83,7 +85,10 @@ impl ForgeConfig {
             .set_default("proxy.enabled", defaults.proxy.enabled)?
             .set_default("proxy.port", defaults.proxy.port as i64)?
             .set_default("proxy.upstream_url", defaults.proxy.upstream_url)?
-            .set_default("sandbox.memory_limit_mb", defaults.sandbox.memory_limit_mb as i64)?
+            .set_default(
+                "sandbox.memory_limit_mb",
+                defaults.sandbox.memory_limit_mb as i64,
+            )?
             .set_default("sandbox.enabled", defaults.sandbox.enabled)?
             .set_default("ai.model", defaults.ai.model)?
             .set_default("ai.system_prompt", defaults.ai.system_prompt)?
@@ -97,10 +102,10 @@ impl ForgeConfig {
                 builder = builder.add_source(File::from(config_path));
             }
         }
-        
+
         // Also check current directory
         if std::path::Path::new("forge.toml").exists() {
-             builder = builder.add_source(File::from(std::path::Path::new("forge.toml")));
+            builder = builder.add_source(File::from(std::path::Path::new("forge.toml")));
         }
 
         // 3. Load from Environment Variables (FORGE_*)

@@ -18,15 +18,24 @@ pub struct ChatMessage {
 
 impl ChatMessage {
     pub fn system(content: impl Into<String>) -> Self {
-        Self { role: ChatRole::System, content: content.into() }
+        Self {
+            role: ChatRole::System,
+            content: content.into(),
+        }
     }
 
     pub fn user(content: impl Into<String>) -> Self {
-        Self { role: ChatRole::User, content: content.into() }
+        Self {
+            role: ChatRole::User,
+            content: content.into(),
+        }
     }
 
     pub fn assistant(content: impl Into<String>) -> Self {
-        Self { role: ChatRole::Assistant, content: content.into() }
+        Self {
+            role: ChatRole::Assistant,
+            content: content.into(),
+        }
     }
 }
 

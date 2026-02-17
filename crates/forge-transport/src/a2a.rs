@@ -1,8 +1,8 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use http_body_util::{BodyExt, Empty, Full};
+use hyper::Request;
 use hyper::body::Bytes;
 use hyper::client::conn::http1;
-use hyper::Request;
 use hyper_util::rt::TokioIo;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -60,7 +60,7 @@ impl A2aClient {
         let url = Url::parse(url_str)?;
         let host = url.host_str().ok_or_else(|| anyhow!("Missing host"))?;
         let port = url.port_or_known_default().unwrap_or(80);
-        
+
         let addr = format!("{}:{}", host, port);
         let stream = TcpStream::connect(addr).await?;
         let io = TokioIo::new(stream);
@@ -74,7 +74,10 @@ impl A2aClient {
 
         let req = Request::builder()
             .method("GET")
-            .uri(format!("{}/.well-known/agent.json", url_str.trim_end_matches('/')))
+            .uri(format!(
+                "{}/.well-known/agent.json",
+                url_str.trim_end_matches('/')
+            ))
             .header("Host", host)
             .body(Empty::<Bytes>::new())?;
 
@@ -89,7 +92,7 @@ impl A2aClient {
         let url = Url::parse(url_str)?;
         let host = url.host_str().ok_or_else(|| anyhow!("Missing host"))?;
         let port = url.port_or_known_default().unwrap_or(80);
-        
+
         let addr = format!("{}:{}", host, port);
         let stream = TcpStream::connect(addr).await?;
         let io = TokioIo::new(stream);
@@ -127,21 +130,23 @@ impl A2aClient {
             result: Option<TaskResponse>,
             error: Option<Value>,
         }
-        
+
         let rpc_res: RpcResponse = serde_json::from_slice(&body_bytes)?;
-        
+
         if let Some(err) = rpc_res.error {
             return Err(anyhow!("RPC Error: {:?}", err));
         }
-        
-        rpc_res.result.ok_or_else(|| anyhow!("No result in RPC response"))
+
+        rpc_res
+            .result
+            .ok_or_else(|| anyhow!("No result in RPC response"))
     }
 
     pub async fn get_task_status(url_str: &str, task_id: &str) -> Result<TaskDetails> {
         let url = Url::parse(url_str)?;
         let host = url.host_str().ok_or_else(|| anyhow!("Missing host"))?;
         let port = url.port_or_known_default().unwrap_or(80);
-        
+
         let addr = format!("{}:{}", host, port);
         let stream = TcpStream::connect(addr).await?;
         let io = TokioIo::new(stream);
@@ -177,13 +182,15 @@ impl A2aClient {
             result: Option<TaskDetails>,
             error: Option<Value>,
         }
-        
+
         let rpc_res: RpcResponse = serde_json::from_slice(&body_bytes)?;
-        
+
         if let Some(err) = rpc_res.error {
             return Err(anyhow!("RPC Error: {:?}", err));
         }
-        
-        rpc_res.result.ok_or_else(|| anyhow!("No result in RPC response"))
+
+        rpc_res
+            .result
+            .ok_or_else(|| anyhow!("No result in RPC response"))
     }
 }

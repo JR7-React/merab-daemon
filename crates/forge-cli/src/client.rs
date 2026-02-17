@@ -1,4 +1,5 @@
 use anyhow::Result;
+use forge_ai::{AiResponse, ChatMessage};
 use forge_core::{AgentManifest, AgentRecord, AgentSummary, Message};
 use forge_transport::a2a::{AgentCard, TaskResponse};
 use jsonrpsee::core::client::ClientT;
@@ -16,7 +17,10 @@ impl ForgeClient {
     }
 
     pub async fn ping(&self) -> Result<String> {
-        let result: String = self.client.request("forge.ping", ObjectParams::new()).await?;
+        let result: String = self
+            .client
+            .request("forge.ping", ObjectParams::new())
+            .await?;
         Ok(result)
     }
 
@@ -76,7 +80,10 @@ impl ForgeClient {
         let mut params = ObjectParams::new();
         params.insert("from", from)?;
         params.insert("content", content)?;
-        let result: Message = self.client.request("forge.broadcastMessage", params).await?;
+        let result: Message = self
+            .client
+            .request("forge.broadcastMessage", params)
+            .await?;
         Ok(result)
     }
 
@@ -97,8 +104,7 @@ impl ForgeClient {
     pub async fn list_tools(&self, agent_id: &str) -> Result<Vec<serde_json::Value>> {
         let mut params = ObjectParams::new();
         params.insert("agent_id", agent_id)?;
-        let result: Vec<serde_json::Value> =
-            self.client.request("forge.listTools", params).await?;
+        let result: Vec<serde_json::Value> = self.client.request("forge.listTools", params).await?;
         Ok(result)
     }
 
@@ -137,11 +143,16 @@ impl ForgeClient {
         Ok(result)
     }
 
-    pub async fn a2a_get_task(&self, url: &str, task_id: &str) -> Result<forge_transport::a2a::TaskDetails> {
+    pub async fn a2a_get_task(
+        &self,
+        url: &str,
+        task_id: &str,
+    ) -> Result<forge_transport::a2a::TaskDetails> {
         let mut params = ObjectParams::new();
         params.insert("url", url)?;
         params.insert("task_id", task_id)?;
-        let result: forge_transport::a2a::TaskDetails = self.client.request("forge.a2aGetTask", params).await?;
+        let result: forge_transport::a2a::TaskDetails =
+            self.client.request("forge.a2aGetTask", params).await?;
         Ok(result)
     }
 
@@ -162,7 +173,8 @@ impl ForgeClient {
     pub async fn memory_get(&self, key: &str) -> Result<Option<serde_json::Value>> {
         let mut params = ObjectParams::new();
         params.insert("key", key)?;
-        let result: Option<serde_json::Value> = self.client.request("forge.memory.get", params).await?;
+        let result: Option<serde_json::Value> =
+            self.client.request("forge.memory.get", params).await?;
         Ok(result)
     }
 
@@ -181,8 +193,26 @@ impl ForgeClient {
     }
 
     pub async fn get_system_status(&self) -> Result<forge_core::SystemStatus> {
-        let result: forge_core::SystemStatus = self.client.request("forge.getSystemStatus", ObjectParams::new()).await?;
+        let result: forge_core::SystemStatus = self
+            .client
+            .request("forge.getSystemStatus", ObjectParams::new())
+            .await?;
+        Ok(result)
+    }
+
+    pub async fn ai_chat(&self, message: &str, context: Vec<ChatMessage>) -> Result<AiResponse> {
+        let mut params = ObjectParams::new();
+        params.insert("message", message)?;
+        let context_json = serde_json::to_string(&context)?;
+        params.insert("context_json", context_json)?;
+        let result: AiResponse = self.client.request("forge.ai.chat", params).await?;
+        Ok(result)
+    }
+
+    pub async fn ai_orchestrate(&self, task: &str) -> Result<AiResponse> {
+        let mut params = ObjectParams::new();
+        params.insert("task", task)?;
+        let result: AiResponse = self.client.request("forge.ai.orchestrate", params).await?;
         Ok(result)
     }
 }
-

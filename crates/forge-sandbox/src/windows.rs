@@ -3,9 +3,9 @@ use std::mem;
 use tracing::{debug, warn};
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::System::JobObjects::{
-    AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
-    QueryInformationJobObject, SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOB_OBJECT_LIMIT_PROCESS_MEMORY,
+    AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    JOB_OBJECT_LIMIT_PROCESS_MEMORY, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+    JobObjectExtendedLimitInformation, QueryInformationJobObject, SetInformationJobObject,
 };
 use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE};
 
@@ -69,7 +69,7 @@ impl JobObject {
             if let Some(err) = assign_err {
                 return Err(err).context("Failed to assign process to job object");
             }
-            
+
             debug!("Assigned process {} to job object", pid);
             Ok(())
         }
@@ -78,7 +78,8 @@ impl JobObject {
     pub fn set_memory_limit(&self, limit_bytes: usize) -> Result<()> {
         let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { mem::zeroed() };
         // We MUST preserve existing flags (like kill-on-close)
-        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_PROCESS_MEMORY;
+        info.BasicLimitInformation.LimitFlags =
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_PROCESS_MEMORY;
         info.ProcessMemoryLimit = limit_bytes;
 
         let result = unsafe {
@@ -98,7 +99,7 @@ impl JobObject {
 
     pub fn get_memory_usage(&self) -> Result<usize> {
         let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { mem::zeroed() };
-        
+
         let result = unsafe {
             QueryInformationJobObject(
                 self.handle,

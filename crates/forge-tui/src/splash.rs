@@ -16,15 +16,18 @@ const SUBTITLE_COLOR: Color = Color::DarkGray; // Gris (#888888)
 
 pub fn build_splash_lines() -> Vec<Line<'static>> {
     vec![
-        Line::from(vec![
-            Span::styled("              ·✦    ✧    ✦·", Style::default().fg(SPARK_COLOR)),
-        ]),
-        Line::from(vec![
-            Span::styled("           ✧·   · ✦ ·   ·✧", Style::default().fg(SPARK_COLOR)),
-        ]),
-        Line::from(vec![
-            Span::styled("              ┌────────┐", Style::default().fg(FACE_COLOR)),
-        ]),
+        Line::from(vec![Span::styled(
+            "              ·✦    ✧    ✦·",
+            Style::default().fg(SPARK_COLOR),
+        )]),
+        Line::from(vec![Span::styled(
+            "           ✧·   · ✦ ·   ·✧",
+            Style::default().fg(SPARK_COLOR),
+        )]),
+        Line::from(vec![Span::styled(
+            "              ┌────────┐",
+            Style::default().fg(FACE_COLOR),
+        )]),
         Line::from(vec![
             Span::styled("              │ ", Style::default().fg(FACE_COLOR)),
             Span::styled("●", Style::default().fg(EYES_COLOR)),
@@ -32,23 +35,27 @@ pub fn build_splash_lines() -> Vec<Line<'static>> {
             Span::styled("●", Style::default().fg(EYES_COLOR)),
             Span::styled(" │", Style::default().fg(FACE_COLOR)),
         ]),
-        Line::from(vec![
-            Span::styled("              │  ╰──╯  │", Style::default().fg(FACE_COLOR)),
-        ]),
-        Line::from(vec![
-            Span::styled("              └──┬──┬──┘", Style::default().fg(FACE_COLOR)),
-        ]),
-        Line::from(vec![
-            Span::styled("            ┌────┴──┴────┐", Style::default().fg(FACE_COLOR)),
-        ]),
+        Line::from(vec![Span::styled(
+            "              │  ╰──╯  │",
+            Style::default().fg(FACE_COLOR),
+        )]),
+        Line::from(vec![Span::styled(
+            "              └──┬──┬──┘",
+            Style::default().fg(FACE_COLOR),
+        )]),
+        Line::from(vec![Span::styled(
+            "            ┌────┴──┴────┐",
+            Style::default().fg(FACE_COLOR),
+        )]),
         Line::from(vec![
             Span::styled("       ✦·══╡  ", Style::default().fg(SPARK_COLOR)),
             Span::styled("░▒▓██▓▒░", Style::default().fg(CORE_COLOR)),
             Span::styled("  ╞══·✦", Style::default().fg(SPARK_COLOR)),
         ]),
-        Line::from(vec![
-            Span::styled("            └────┬──┬────┘", Style::default().fg(FACE_COLOR)),
-        ]),
+        Line::from(vec![Span::styled(
+            "            └────┬──┬────┘",
+            Style::default().fg(FACE_COLOR),
+        )]),
         Line::from(vec![
             Span::styled("              ", Style::default().fg(FACE_COLOR)),
             Span::styled("▒▓█┘", Style::default().fg(METAL_GRADIENT_START)),
@@ -60,34 +67,44 @@ pub fn build_splash_lines() -> Vec<Line<'static>> {
         ]),
         Line::from(vec![
             Span::styled("          ", Style::default().fg(FACE_COLOR)),
-            Span::styled("░▒▓██████████████▓▒░", Style::default().fg(METAL_GRADIENT_START)),
+            Span::styled(
+                "░▒▓██████████████▓▒░",
+                Style::default().fg(METAL_GRADIENT_START),
+            ),
         ]),
         Line::from(vec![
             Span::styled("        ", Style::default().fg(FACE_COLOR)),
             Span::styled("▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄", Style::default().fg(BASE_COLOR)),
         ]),
         Line::from(vec![Span::raw("")]), // Línea en blanco para separar el robot de las letras
-        Line::from(vec![
-            Span::styled(" ███████╗ ██████╗  ██████╗   ██████╗  ███████╗", Style::default().fg(FORGE_LETTERS_COLOR)),
-        ]),
-        Line::from(vec![
-            Span::styled(" ██╔════╝██╔═══██╗██╔══██╗ ██╔════╝  ██╔════╝", Style::default().fg(FORGE_LETTERS_COLOR)),
-        ]),
-        Line::from(vec![
-            Span::styled(" █████╗  ██║   ██║██████╔╝ ██║  ███╗ █████╗", Style::default().fg(FORGE_LETTERS_COLOR)),
-        ]),
-        Line::from(vec![
-            Span::styled(" ██╔══╝  ██║   ██║██╔══██╗ ██║   ██║ ██╔══╝", Style::default().fg(FORGE_LETTERS_COLOR)),
-        ]),
-        Line::from(vec![
-            Span::styled(" ██║     ╚██████╔╝██║  ██║ ╚██████╔╝ ███████╗", Style::default().fg(FORGE_LETTERS_COLOR)),
-        ]),
-        Line::from(vec![
-            Span::styled(" ╚═╝      ╚═════╝ ╚═╝  ╚═╝  ╚═════╝  ╚══════╝", Style::default().fg(FORGE_LETTERS_COLOR)),
-        ]),
+        Line::from(vec![Span::styled(
+            " ███████╗ ██████╗  ██████╗   ██████╗  ███████╗",
+            Style::default().fg(FORGE_LETTERS_COLOR),
+        )]),
+        Line::from(vec![Span::styled(
+            " ██╔════╝██╔═══██╗██╔══██╗ ██╔════╝  ██╔════╝",
+            Style::default().fg(FORGE_LETTERS_COLOR),
+        )]),
+        Line::from(vec![Span::styled(
+            " █████╗  ██║   ██║██████╔╝ ██║  ███╗ █████╗",
+            Style::default().fg(FORGE_LETTERS_COLOR),
+        )]),
+        Line::from(vec![Span::styled(
+            " ██╔══╝  ██║   ██║██╔══██╗ ██║   ██║ ██╔══╝",
+            Style::default().fg(FORGE_LETTERS_COLOR),
+        )]),
+        Line::from(vec![Span::styled(
+            " ██║     ╚██████╔╝██║  ██║ ╚██████╔╝ ███████╗",
+            Style::default().fg(FORGE_LETTERS_COLOR),
+        )]),
+        Line::from(vec![Span::styled(
+            " ╚═╝      ╚═════╝ ╚═╝  ╚═╝  ╚═════╝  ╚══════╝",
+            Style::default().fg(FORGE_LETTERS_COLOR),
+        )]),
         Line::from(vec![Span::raw("")]), // Línea en blanco
-        Line::from(vec![
-            Span::styled("           ⚒  Agent  Runtime  Engine  ⚒", Style::default().fg(SUBTITLE_COLOR)),
-        ]),
+        Line::from(vec![Span::styled(
+            "           ⚒  Agent  Runtime  Engine  ⚒",
+            Style::default().fg(SUBTITLE_COLOR),
+        )]),
     ]
 }

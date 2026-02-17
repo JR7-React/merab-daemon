@@ -1,5 +1,5 @@
+use crate::{AgentId, AgentStatus};
 use serde::{Deserialize, Serialize};
-use crate::{AgentStatus, AgentId};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemStatus {

@@ -70,7 +70,7 @@ fn row_to_task(row: &rusqlite::Row) -> Result<Task, rusqlite::Error> {
     let updated_at = chrono::DateTime::parse_from_rfc3339(&updated_at_str)
         .expect("valid datetime")
         .with_timezone(&Utc);
-    
+
     let status = match status_str.as_str() {
         "pending" => TaskStatus::Pending,
         "running" => TaskStatus::Running,

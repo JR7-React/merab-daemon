@@ -59,30 +59,31 @@ async fn handle_request(
 
 async fn handle_agent_card(ctx: Arc<A2AContext>) -> Result<Response<Full<Bytes>>, Infallible> {
     let mut skills = Vec::new();
-    let mcp_manager = &ctx.mcp_manager;
+    let clients = ctx.mcp_manager.get_all_clients().await;
 
-    // Get all running MCP clients
-    // Assuming list_tools is async and we need to iterate
-    // This part is tricky because McpManager stores clients in Mutex<HashMap>
-    // We need to iterate over them and call list_tools on each.
-    
-    // For now, let's just list registered agents from DB or assume running ones?
-    // The prompt says "listing all MCP agents as skills".
-    // This implies we need to query the agents and their capabilities.
-    // If an agent is running, we can ask for its tools.
-    // If not running, we might not know its tools unless we cached them.
-    // For MVP, let's just use running agents.
-    
-    // We need access to running clients.
-    // McpManager doesn't expose a way to iterate easily.
-    // I might need to add a method to McpManager to get all tools.
-    // But for now let's assume we can get client IDs and then query.
-    
-    // Placeholder implementation:
+    for (agent_id, client) in clients {
+        match client.list_tools().await {
+            Ok(tools) => {
+                for tool in tools {
+                    skills.push(AgentSkill {
+                        id: tool.name.clone(),
+                        name: tool.name,
+                        description: tool.description,
+                        input_modes: vec!["text".to_string()],  // Default assumptions
+                        output_modes: vec!["text".to_string()],
+                    });
+                }
+            }
+            Err(e) => {
+                tracing::warn!(id = %agent_id, error = %e, "failed to list tools for agent card");
+            }
+        }
+    }
+
     let card = AgentCard {
         name: "Forge Runtime".to_string(),
         description: "A local agent runtime hosting multiple MCP agents".to_string(),
-        url: "http://localhost:8080".to_string(), // Should be configurable
+        url: "http://localhost:8080".to_string(), 
         skills,
     };
 
@@ -102,7 +103,11 @@ async fn handle_rpc(
     req: Request<hyper::body::Incoming>,
     ctx: Arc<A2AContext>,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
-    let body_bytes = req.into_body().collect().await.unwrap().to_bytes(); // Should handle error
+    let body_bytes = match req.into_body().collect().await {
+        Ok(b) => b.to_bytes(),
+        Err(_) => return Ok(Response::builder().status(StatusCode::BAD_REQUEST).body(Full::new(Bytes::from("Body Error"))).unwrap()),
+    };
+    
     let rpc_req: RpcRequest = match serde_json::from_slice(&body_bytes) {
         Ok(r) => r,
         Err(_) => return Ok(Response::builder()
@@ -114,7 +119,6 @@ async fn handle_rpc(
     let result = match rpc_req.method.as_str() {
         "tasks/send" => handle_task_send(rpc_req.params, ctx).await,
         "tasks/get" => handle_task_get(rpc_req.params, ctx).await,
-        // "tasks/cancel" => handle_task_cancel(rpc_req.params, ctx).await,
         _ => Err("Method not found".to_string()),
     };
 
@@ -135,24 +139,13 @@ async fn handle_rpc(
 }
 
 async fn handle_task_send(params: Option<Value>, ctx: Arc<A2AContext>) -> Result<Value, String> {
-    // 1. Parse params
-    // 2. Create task in DB
-    // 3. Find tool
-    // 4. Execute tool
-    // 5. Update task
-    
-    // For MVP, simplistic parsing
-    // Assuming params is an object matching TaskRequest fields or similar?
-    // A2A spec for tasks/send usually takes 'task' object.
-    
-    // Let's assume params IS the TaskRequest for now to match our struct
     let req: TaskRequest = serde_json::from_value(params.unwrap_or(Value::Null))
         .map_err(|e| format!("Invalid params: {}", e))?;
 
     let task_id = Uuid::new_v4();
     let task = Task {
         id: task_id,
-        source: None, // Could extract from headers
+        source: None, 
         target: req.skill.clone(),
         input: req.input.to_string(),
         status: TaskStatus::Pending,
@@ -184,13 +177,12 @@ async fn handle_task_send(params: Option<Value>, ctx: Arc<A2AContext>) -> Result
 }
 
 async fn handle_task_get(params: Option<Value>, ctx: Arc<A2AContext>) -> Result<Value, String> {
-    // Expect params to contain 'task_id'
     let id_val = params.and_then(|p| p.get("task_id").cloned());
     let id_str = id_val.and_then(|v| v.as_str().map(|s| s.to_string()))
         .ok_or("Missing task_id")?;
         
     let db = ctx.db.lock().await;
-    let task = db.get_task(&id_str).map_err(|e| "Task not found".to_string())?;
+    let task = db.get_task(&id_str).map_err(|_e| "Task not found".to_string())?;
     
     Ok(serde_json::json!({
         "task_id": task.id.to_string(),
@@ -201,27 +193,53 @@ async fn handle_task_get(params: Option<Value>, ctx: Arc<A2AContext>) -> Result<
 }
 
 async fn execute_task(ctx: Arc<A2AContext>, task_id: Uuid, skill: String, input: Value) {
-    // 1. Find the agent that has this skill (tool)
-    // We need to iterate all clients to find one with this tool name.
-    // This is inefficient but okay for MVP.
-    
-    // TODO: Implement finding the right agent.
-    // For now, let's assume we find it or fail.
-    
     // Update status to running
     {
         let db = ctx.db.lock().await;
         let _ = db.update_task_status(&task_id.to_string(), TaskStatus::Running, None, None);
     }
     
-    // ... search logic ...
-    // Since we don't have easy lookup, we might need to change McpManager
-    // or iterate. Let's assume we fail for now until we add lookup.
+    // Find the agent that has this skill (tool)
+    let clients = ctx.mcp_manager.get_all_clients().await;
+    let mut target_client = None;
+
+    for (_id, client) in clients {
+        // We have to list tools to check if it supports the skill
+        // This is inefficient (O(N*M)) but fine for MVP with few agents
+        if let Ok(tools) = client.list_tools().await {
+            if tools.iter().any(|t| t.name == skill) {
+                target_client = Some(client);
+                break;
+            }
+        }
+    }
     
-    // Mock execution for compilation check
-    // In real impl, we'd use ctx.mcp_manager.find_client_with_tool(&skill)
-    
-    let result = Err("Tool execution not yet fully wired".to_string());
+    let result = if let Some(client) = target_client {
+        // Convert input to Map if possible, otherwise wrap or error
+        let args = match input {
+            Value::Object(map) => Some(map),
+            Value::Null => None,
+            _ => {
+                // If input is not an object, try to wrap it in a default key "arg"
+                // or just fail. For now, let's fail if it's not object/null
+                 None // Will likely fail if tool expects args
+            }
+        };
+
+        match client.call_tool(skill, args).await {
+            Ok(res) => {
+                // Serialize CallToolResult content
+                // rmcp CallToolResult has `content` field
+                match serde_json::to_string(&res.content) {
+                    Ok(s) => Ok(s),
+                    Err(e) => Err(format!("Serialization error: {}", e)),
+                }
+            }
+            Err(e) => Err(format!("Tool execution failed: {}", e)),
+        }
+    } else {
+        Err(format!("No agent found with skill: {}", skill))
+    };
     
     let (status, output, error) = match result {
         Ok(val) => (TaskStatus::Completed, Some(val), None),

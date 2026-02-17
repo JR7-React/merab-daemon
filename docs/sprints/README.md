@@ -9,13 +9,13 @@ Documentación detallada de cada sprint para continuidad del desarrollo.
 | 1.0 | MVP Skeleton — workspace, tipos, CRUD, daemon, CLI | `b752f01` | [sprint-1](sprint-1-mvp-skeleton.md) |
 | 2.1 | Agent Lifecycle — supervisor, restart policies | `a12543a` | [sprint-2.1](sprint-2.1-agent-lifecycle.md) |
 | 2.2 | Message Passing — mensajería entre agentes | `c223911` | [sprint-2.2](sprint-2.2-message-passing.md) |
-| 2.3 | MCP Implementation — rmcp SDK, tools discovery/invocation | pendiente | [sprint-2.3](sprint-2.3-mcp-implementation.md) |
+| 2.3 | MCP Implementation — rmcp SDK, tools discovery/invocation | `cf17cc9` | [sprint-2.3](sprint-2.3-mcp-implementation.md) |
+| 2.4 | A2A Protocol — HTTP server, discovery, task execution | pendiente | [sprint-2.4](sprint-2.4-a2a-protocol.md) |
 
 ## Sprints pendientes
 
 | Sprint | Descripción | Prioridad |
 |---|---|---|
-| 2.4 | A2A Implementation — Agent Cards, HTTP discovery | Alta |
 | 2.5 | Context Proxy — cache de tokens para LLMs | Media |
 | 2.6 | Shared Memory — key-value store persistente | Media |
 | 2.7 | Sandboxing Real — Windows Job Objects | Baja |

@@ -16,7 +16,7 @@ use ratatui::{
 use std::io;
 use std::time::{Duration, Instant};
 
-mod splash;
+pub mod splash;
 
 pub struct TuiApp {
     pub status: Option<SystemStatus>,

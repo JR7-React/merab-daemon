@@ -21,7 +21,8 @@ Documentación detallada de cada sprint para continuidad del desarrollo.
 | 4.0 | AI Coordinator — forge-ai, llm integration, chat/ask commands | pendiente | [sprint-4.0](sprint-4.0-ai-coordinator.md) |
 | 5.0 | First MCP Agent — forge-echo reference implementation | pendiente | [sprint-5.0](sprint-5.0-first-agent.md) |
 | 6.0 | FileSystem Agent — forge-fs reading/writing files | pendiente | [sprint-6.0](sprint-6.0-fs-agent.md) |
-| 7.0 | Shell Agent — forge-shell execute commands | pendiente | [sprint-7.0](sprint-7.0-shell-agent.md) |
+| 7.0 | Shell Agent — forge-shell execute commands | completado | [sprint-7.0](sprint-7.0-shell-agent.md) |
+| 8.0 | Interactive Chat TUI — forge-cli claude-code style | completado | [sprint-8.0](sprint-8.0-chat-tui.md) |
 
 ## Build rápido
 

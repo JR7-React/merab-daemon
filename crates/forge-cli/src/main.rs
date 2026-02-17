@@ -1,12 +1,15 @@
 mod client;
+mod chat_ui;
 
-use std::io::{Write, stdin, stdout};
+
+
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use forge_ai::ChatMessage;
+
 use forge_core::AgentManifest;
 
 use client::ForgeClient;
@@ -334,41 +337,9 @@ async fn main() -> Result<()> {
             .await?;
         }
         Commands::Chat => {
-            println!("Forge AI Chat (type 'quit' or 'exit' to stop)");
-            println!("{}", "-".repeat(50));
-
-            let mut context: Vec<ChatMessage> = Vec::new();
-
-            loop {
-                print!("> ");
-                stdout().flush()?;
-
-                let mut input = String::new();
-                stdin().read_line(&mut input)?;
-                let input = input.trim();
-
-                if input.eq_ignore_ascii_case("quit") || input.eq_ignore_ascii_case("exit") {
-                    break;
-                }
-
-                if input.is_empty() {
-                    continue;
-                }
-
-                match client.ai_chat(input, context.clone()).await {
-                    Ok(resp) => {
-                        println!("\nAI: {}\n", resp.content);
-                        context.push(ChatMessage::user(input));
-                        context.push(ChatMessage::assistant(resp.content));
-
-                        if let Some(tool) = resp.tool_call {
-                            println!("[Tool Call: {}]", tool.name);
-                        }
-                    }
-                    Err(e) => println!("Error: {}", e),
-                }
-            }
+            chat_ui::start_chat_session(&client).await?;
         }
+
         Commands::Ask { question } => match client.ai_orchestrate(&question).await {
             Ok(resp) => {
                 println!("{}", resp.content);

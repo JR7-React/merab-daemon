@@ -19,3 +19,9 @@ jsonrpsee = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
 toml = { workspace = true }
+termimad = "0.30"
+crossterm = "0.28"
+ratatui = { version = "0.29", default-features = false, features = ["crossterm"] }
+rustyline = "14.0"
+
+

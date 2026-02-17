@@ -1,0 +1,7 @@
+name = "forge-echo"
+version = "0.1.0"
+description = "A simple echo agent for testing MCP integration."
+command = "target/debug/forge-echo.exe"
+args = []
+protocol = "mcp"
+restart_on_failure = false

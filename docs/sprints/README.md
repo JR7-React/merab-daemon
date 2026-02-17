@@ -19,6 +19,7 @@ Documentación detallada de cada sprint para continuidad del desarrollo.
 | 2.10 | TUI Dashboard — Real-time observability | pendiente | [sprint-2.10](sprint-2.10-tui.md) |
 | 3.0 | Cleanup & Tests — 0 warnings, SQL injection fix, 48 tests | pendiente | [sprint-3.0](sprint-3.0-cleanup-tests.md) |
 | 4.0 | AI Coordinator — forge-ai, llm integration, chat/ask commands | pendiente | [sprint-4.0](sprint-4.0-ai-coordinator.md) |
+| 5.0 | First MCP Agent — forge-echo reference implementation | pendiente | [sprint-5.0](sprint-5.0-first-agent.md) |
 
 ## Build rápido
 

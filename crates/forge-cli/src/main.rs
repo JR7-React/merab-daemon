@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use forge_ai::{ChatMessage, ChatRole};
+use forge_ai::ChatMessage;
 use forge_core::AgentManifest;
 
 use client::ForgeClient;

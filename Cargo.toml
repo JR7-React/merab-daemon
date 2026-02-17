@@ -7,7 +7,7 @@ members = [
     "crates/forge-store",
     "crates/forge-transport",
     "crates/forge-sandbox", "crates/forge-config", "crates/forge-tui",
-    "crates/forge-ai",
+    "crates/forge-ai", "crates/forge-echo",
 ]
 
 [workspace.dependencies]

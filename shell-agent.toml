@@ -1,0 +1,7 @@
+name = "forge-shell"
+version = "0.1.0"
+description = "Shell Agent (execute commands)"
+command = "target/debug/forge-shell.exe"
+args = []
+protocol = "mcp"
+restart_on_failure = false

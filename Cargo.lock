@@ -721,6 +721,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "forge-shell"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "forge-store"
 version = "0.1.0"
 dependencies = [

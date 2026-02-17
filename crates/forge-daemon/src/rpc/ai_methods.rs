@@ -8,7 +8,7 @@ use jsonrpsee::types::ErrorObjectOwned;
 use super::server::to_rpc_error;
 use crate::mcp_manager::McpManager;
 use crate::prompts::ENGINEER_SYSTEM_PROMPT;
-use forge_core::multi_agent_pipeline::Planner;
+use crate::planner::PlannerAgent;
 
 
 /// Build an AiClient from the daemon's config.
@@ -156,7 +156,7 @@ pub async fn handle_ai_orchestrate(
 
         messages.push(ChatMessage::assistant(&response.content));
 
-        let tool_result_str = execute_tool_call(mcp_manager, &tool_call).await?;
+        let tool_result_str = execute_tool_call(config, mcp_manager, &tool_call).await?;
 
         messages.push(ChatMessage::user(format!(
             "Tool '{}' returned:\n{}",
@@ -181,17 +181,20 @@ pub async fn handle_ai_orchestrate(
 
 /// Execute a single tool call via MCP and return the result as a string.
 async fn execute_tool_call(
+    config: &ForgeConfig,
     mcp_manager: &Arc<McpManager>,
     tool_call: &forge_ai::ToolCall,
 ) -> Result<String, ErrorObjectOwned> {
     // Handle Internal Tools
     if tool_call.name == "core.plan" {
-        let task = tool_call.arguments.get("task")
+        let task_desc = tool_call.arguments.get("task")
             .and_then(|v| v.as_str())
             .ok_or_else(|| to_rpc_error(ForgeError::InvalidInput("Missing 'task' argument for core.plan".into())))?;
         
-        let planner = Planner::new();
-        let plan = planner.decompose(task);
+        let mut planner = PlannerAgent::new(config);
+        let plan = planner.decompose(task_desc).await
+            .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))?;
+            
         return serde_json::to_string(&plan)
             .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())));
     }
@@ -226,8 +229,9 @@ pub async fn handle_ai_plan(
     _mcp_manager: &Arc<McpManager>,
     task: String,
 ) -> Result<serde_json::Value, ErrorObjectOwned> {
-    let planner = Planner::new();
-    let plan = planner.decompose(&task);
+    let mut planner = PlannerAgent::new(_config);
+    let plan = planner.decompose(&task).await
+        .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))?;
     
     serde_json::to_value(&plan)
         .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))

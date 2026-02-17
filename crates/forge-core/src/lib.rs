@@ -12,5 +12,7 @@ pub use permission::*;
 pub use stats::*;
 pub use task::*;
 
+pub mod multi_agent_pipeline;
+
 #[cfg(test)]
 mod tests;

@@ -117,10 +117,16 @@ enum Commands {
     Monitor,
     /// Chat with Forge AI
     Chat,
-    /// Ask a single question to Forge AI (orchestration)
+    #[command(about = "Ask AI to answer a question or execute a task")]
     Ask {
-        /// The question or task
+        #[arg(index = 1)]
         question: String,
+    },
+
+    #[command(about = "Ask AI to create a plan for a task")]
+    Plan {
+        #[arg(index = 1)]
+        task: String,
     },
 }
 
@@ -351,6 +357,16 @@ async fn main() -> Result<()> {
             match ready_client.ai_orchestrate(&question).await {
                 Ok(resp) => {
                     println!("{}", resp.content);
+                }
+                Err(e) => eprintln!("Error: {}", e),
+            }
+        }
+
+        Commands::Plan { task } => {
+            let ready_client = bootstrap::ensure_ready(&cli.url).await?;
+            match ready_client.ai_plan(&task).await {
+                Ok(plan) => {
+                    println!("{}", serde_json::to_string_pretty(&plan).unwrap());
                 }
                 Err(e) => eprintln!("Error: {}", e),
             }

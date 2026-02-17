@@ -8,6 +8,7 @@ use jsonrpsee::types::ErrorObjectOwned;
 use super::server::to_rpc_error;
 use crate::mcp_manager::McpManager;
 use crate::prompts::ENGINEER_SYSTEM_PROMPT;
+use forge_core::multi_agent_pipeline::Planner;
 
 
 /// Build an AiClient from the daemon's config.
@@ -17,14 +18,10 @@ pub fn build_ai_client(config: &ForgeConfig) -> Result<AiClient, ErrorObjectOwne
     let ai_config = AiClientConfig {
         proxy_url,
         model: config.ai.model.clone(),
-        // If config prompt is just the default one, swap it for our Engineer prompt.
-        // Or better: Append config prompt to Engineer prompt.
-        // For now, let's use the Engineer prompt as the base.
         system_prompt: Some(ENGINEER_SYSTEM_PROMPT.to_string()),
         max_tokens: config.ai.max_tokens,
         temperature: config.ai.temperature,
     };
-
 
     Ok(AiClient::new(ai_config))
 }
@@ -45,9 +42,12 @@ pub async fn build_dynamic_system_prompt(
     prompt.push_str(r#"{"tool_call": {"name": "<tool_name>", "arguments": {<args>}}}"#);
     prompt.push_str("\n\nTools:\n");
 
+    // Inject Internal Tools
+    prompt.push_str("- **core.plan**: Decompose a complex task into a structured plan of subtasks. Use this as the FIRST step for any complex request.\n");
+    prompt.push_str("  - `task`: The description of the task to decompose (required)\n");
+
     for tool in &tools {
         prompt.push_str(&format!("- **{}**: {}\n", tool.name, tool.description));
-        // Extract just parameter names from the schema (avoid dumping the full JSON)
         if let Some(props) = tool.input_schema.get("properties").and_then(|p| p.as_object()) {
             let params: Vec<&str> = props.keys().map(|k| k.as_str()).collect();
             let required: Vec<&str> = tool.input_schema
@@ -70,9 +70,6 @@ pub async fn build_dynamic_system_prompt(
 }
 
 /// Handle `forge.ai.chat` — single-step LLM call.
-///
-/// Sends messages to LLM and returns the response as-is (may contain a tool_call).
-/// The client is responsible for driving the tool execution loop.
 pub async fn handle_ai_chat(
     config: &ForgeConfig,
     mcp_manager: &Arc<McpManager>,
@@ -94,8 +91,6 @@ pub async fn handle_ai_chat(
 }
 
 /// Handle `forge.ai.executeTool` — execute a tool by name via McpManager.
-///
-/// Looks up which agent owns the tool and calls it.
 pub async fn handle_execute_tool(
     mcp_manager: &Arc<McpManager>,
     tool_name: String,
@@ -126,11 +121,6 @@ pub async fn handle_execute_tool(
 }
 
 /// Handle `forge.ai.orchestrate` — multi-step orchestration loop.
-///
-/// The LLM analyzes the task and can call tools repeatedly until done.
-/// Each tool result is fed back into the conversation. The loop ends when:
-/// - The LLM responds without a tool call (task complete).
-/// - The max steps limit is reached.
 pub async fn handle_ai_orchestrate(
     config: &ForgeConfig,
     mcp_manager: &Arc<McpManager>,
@@ -142,7 +132,6 @@ pub async fn handle_ai_orchestrate(
     let dynamic_prompt = build_dynamic_system_prompt(ENGINEER_SYSTEM_PROMPT, mcp_manager).await;
     client.set_system_prompt(dynamic_prompt);
 
-    // Conversation history that grows with each step
     let mut messages: Vec<ChatMessage> = vec![ChatMessage::user(&task)];
 
     for step in 0..max_steps {
@@ -153,35 +142,28 @@ pub async fn handle_ai_orchestrate(
             .await
             .map_err(|e| to_rpc_error(ForgeError::AiError(e.to_string())))?;
 
-        // If no tool call, the LLM is done — return the final answer
-        let tool_call = match &response.tool_call {
-            Some(tc) => tc.clone(),
-            None => {
-                tracing::info!(steps = step + 1, "orchestration complete");
-                return Ok(response);
-            }
-        };
+        if response.tool_call.is_none() {
+            tracing::info!(steps = step + 1, "orchestration complete");
+            return Ok(response);
+        }
 
+        let tool_call = response.tool_call.clone().unwrap();
         tracing::info!(
             step = step,
             tool = %tool_call.name,
             "orchestrator: executing tool"
         );
 
-        // Append the assistant's response to history
         messages.push(ChatMessage::assistant(&response.content));
 
-        // Execute the tool
         let tool_result_str = execute_tool_call(mcp_manager, &tool_call).await?;
 
-        // Append tool result as user message for next iteration
         messages.push(ChatMessage::user(format!(
             "Tool '{}' returned:\n{}",
             tool_call.name, tool_result_str
         )));
     }
 
-    // Max steps reached — do one final call asking for a summary
     tracing::warn!(max_steps = max_steps, "orchestration hit step limit");
 
     messages.push(ChatMessage::user(
@@ -202,6 +184,18 @@ async fn execute_tool_call(
     mcp_manager: &Arc<McpManager>,
     tool_call: &forge_ai::ToolCall,
 ) -> Result<String, ErrorObjectOwned> {
+    // Handle Internal Tools
+    if tool_call.name == "core.plan" {
+        let task = tool_call.arguments.get("task")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| to_rpc_error(ForgeError::InvalidInput("Missing 'task' argument for core.plan".into())))?;
+        
+        let planner = Planner::new();
+        let plan = planner.decompose(task);
+        return serde_json::to_string(&plan)
+            .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())));
+    }
+
     let mcp_client = mcp_manager
         .find_agent_for_tool(&tool_call.name)
         .await
@@ -223,5 +217,18 @@ async fn execute_tool_call(
         })?;
 
     serde_json::to_string(&tool_result)
+        .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))
+}
+
+/// Handle `forge.ai.plan` — decompose a task into a plan.
+pub async fn handle_ai_plan(
+    _config: &ForgeConfig,
+    _mcp_manager: &Arc<McpManager>,
+    task: String,
+) -> Result<serde_json::Value, ErrorObjectOwned> {
+    let planner = Planner::new();
+    let plan = planner.decompose(&task);
+    
+    serde_json::to_value(&plan)
         .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))
 }

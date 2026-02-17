@@ -30,6 +30,9 @@ pub enum ForgeError {
     #[error("invalid manifest: {0}")]
     InvalidManifest(String),
 
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
+
     #[error("task execution failed: {0}")]
     TaskFailed(String),
 
@@ -61,6 +64,7 @@ impl ForgeError {
             ForgeError::MemoryKeyNotFound(_) => -32007,
             ForgeError::PermissionDenied(_) => -32008,
             ForgeError::InvalidManifest(_) => -32602, // Invalid params
+            ForgeError::InvalidInput(_) => -32602,    // Invalid params
             ForgeError::TaskFailed(_) => -32009,
             ForgeError::Store(_) => -32010,
             ForgeError::Transport(_) => -32011,

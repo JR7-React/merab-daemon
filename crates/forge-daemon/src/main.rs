@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 use tracing_subscriber::EnvFilter;
 
 use forge_core::AgentStatus;
+use forge_daemon::a2a_server::{start_a2a_server, A2AContext};
 use forge_daemon::handlers::{ForgeApiServer, ForgeRpc};
 use forge_daemon::mcp_manager::McpManager;
 use forge_daemon::process::is_process_alive;
@@ -39,6 +40,18 @@ async fn main() -> Result<()> {
     let db = Arc::new(Mutex::new(db));
     let supervisor = Arc::new(ProcessSupervisor::new(registry.clone(), db.clone()));
     let mcp_manager = Arc::new(McpManager::new());
+
+    // Start A2A Server
+    let a2a_ctx = Arc::new(A2AContext {
+        db: db.clone(),
+        mcp_manager: mcp_manager.clone(),
+    });
+    let a2a_addr = SocketAddr::from(([127, 0, 0, 1], 8080));
+    tokio::spawn(async move {
+        if let Err(e) = start_a2a_server(a2a_addr, a2a_ctx).await {
+            tracing::error!("A2A server failed: {:?}", e);
+        }
+    });
 
     let rpc = ForgeRpc {
         registry: registry.clone(),

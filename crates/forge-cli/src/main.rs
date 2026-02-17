@@ -91,6 +91,21 @@ enum Commands {
         #[arg(default_value = "{}")]
         arguments: String,
     },
+    /// Discover a remote A2A agent
+    A2aDiscover {
+        /// URL of the remote agent
+        url: String,
+    },
+    /// Send a task to a remote A2A agent
+    A2aSend {
+        /// URL of the remote agent
+        url: String,
+        /// Skill name to invoke
+        skill: String,
+        /// Input arguments as JSON
+        #[arg(default_value = "{}")]
+        input: String,
+    },
 }
 
 #[tokio::main]
@@ -193,6 +208,15 @@ async fn main() -> Result<()> {
         } => {
             let args: serde_json::Value = serde_json::from_str(&arguments)?;
             let result = client.call_tool(&agent_id, &tool_name, args).await?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+        Commands::A2aDiscover { url } => {
+            let card = client.a2a_discover(&url).await?;
+            println!("{}", serde_json::to_string_pretty(&card)?);
+        }
+        Commands::A2aSend { url, skill, input } => {
+            let args: serde_json::Value = serde_json::from_str(&input)?;
+            let result = client.a2a_send(&url, &skill, args).await?;
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
     }

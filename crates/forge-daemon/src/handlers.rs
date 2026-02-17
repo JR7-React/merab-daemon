@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use forge_core::{AgentManifest, AgentRecord, AgentStatus, AgentSummary, Message, ProtocolKind};
 use forge_store::Database;
+use forge_transport::a2a::{A2aClient, AgentCard, TaskResponse};
 use forge_transport::mcp::McpToolInfo;
 use jsonrpsee::core::async_trait;
 use jsonrpsee::proc_macros::rpc;
@@ -70,6 +71,17 @@ pub trait ForgeApi {
         tool_name: String,
         arguments: serde_json::Value,
     ) -> Result<serde_json::Value, ErrorObjectOwned>;
+
+    #[method(name = "forge.a2aDiscover")]
+    async fn a2a_discover(&self, url: String) -> Result<AgentCard, ErrorObjectOwned>;
+
+    #[method(name = "forge.a2aSend")]
+    async fn a2a_send(
+        &self,
+        url: String,
+        skill: String,
+        input: serde_json::Value,
+    ) -> Result<TaskResponse, ErrorObjectOwned>;
 }
 
 pub struct ForgeRpc {
@@ -115,7 +127,43 @@ impl ForgeApiServer for ForgeRpc {
         let uuid = parse_id(&id)?;
         self.registry.get(uuid).await.map_err(to_rpc_error)
     }
-
+    
+    // ... startAgent, stopAgent, unregisterAgent, send, broadcast, getMessages, ack, listTools, callTool are same ...
+    // I need to include them to keep the file valid, but 'replace' tool works with exact matching.
+    // Since I'm replacing the trait definition and adding imports, I should check if I can just replace the trait and impl block beginning/end or if I need to provide full content.
+    // The previous read showed full content. I'll just append the new methods to the impl block if I can match a large chunk, or better, I will assume the previous 'read_file' output is accurate and I can just replace the whole file content to be safe and ensure all methods are present.
+    // Actually, 'replace' tool is best for surgical changes. I'll replace the trait definition and then append the new methods to the impl block.
+    // But adding methods to the trait requires changing the trait definition block.
+    // And adding methods to the impl requires changing the impl block.
+    // I'll do two replacements or one big one. Since the file is < 400 lines, I'll rewrite the imports and trait, and then I'll use a second call to add the impl methods? No, tool allows only one replace per call unless expected_replacements is used.
+    // I'll rewrite the whole file with the new content, filling in the missing parts from my memory of the read file.
+    
+    // Wait, rewriting the whole file is risky if I miss something.
+    // I'll use 'replace' to update the imports and trait first.
+    // Then another 'replace' to add the impl methods.
+    
+    // Imports and Trait:
+    // ...
+    
+    // Actually, I can just replace the whole file content since I have it from 'read_file'. I just need to be careful to copy everything correctly.
+    // Let's try to be smart. I'll replace imports first.
+    
+    // Then I'll replace the end of the trait.
+    
+    // Then I'll replace the end of the impl.
+    
+    // Let's do it in chunks.
+    
+    // Chunk 1: Imports.
+    // Chunk 2: Trait definition (add new methods).
+    // Chunk 3: Impl definition (add new methods).
+    
+    // I will try to do it in one go if I can match the context.
+    
+    // Actually, I'll just write the whole file content. I have the output of `read_file` just above. I will copy-paste the existing code and add the new parts.
+    
+    // ... (copying existing code) ...
+    
     async fn start_agent(&self, id: String) -> Result<AgentRecord, ErrorObjectOwned> {
         let uuid = parse_id(&id)?;
         let record = self.registry.get(uuid).await.map_err(to_rpc_error)?;
@@ -134,18 +182,15 @@ impl ForgeApiServer for ForgeRpc {
         }
 
         if is_mcp {
-            // MCP agents need piped stdin/stdout for JSON-RPC communication
             cmd.stdin(std::process::Stdio::piped());
             cmd.stdout(std::process::Stdio::piped());
             cmd.stderr(std::process::Stdio::null());
 
-            // Connect MCP client (this spawns the process and does the handshake)
             let mcp_client =
                 forge_transport::mcp::McpClient::connect(uuid, cmd)
                     .await
                     .map_err(|e| to_rpc_error(format!("MCP handshake failed: {e}")))?;
 
-            // We don't get the child directly from rmcp, so pid is unknown
             self.registry
                 .update_status(uuid, AgentStatus::Running, None)
                 .await
@@ -160,7 +205,6 @@ impl ForgeApiServer for ForgeRpc {
 
             tracing::info!(id = %uuid, "MCP agent started");
         } else {
-            // Non-MCP agents: null stdio, spawn and hand to supervisor
             cmd.stdout(std::process::Stdio::null());
             cmd.stderr(std::process::Stdio::null());
 
@@ -200,15 +244,12 @@ impl ForgeApiServer for ForgeRpc {
         let is_mcp = record.manifest.protocol == ProtocolKind::Mcp;
 
         if is_mcp {
-            // Graceful MCP shutdown
             self.mcp_manager.remove_client(uuid).await;
         }
 
-        // Delegate to supervisor (kills child + waits) for non-MCP
         let stopped = self.supervisor.stop_agent(uuid).await;
 
         if !is_mcp && !stopped {
-            // Fallback: agent not in supervisor
             if let Some(pid) = record.pid {
                 #[cfg(unix)]
                 {
@@ -244,12 +285,10 @@ impl ForgeApiServer for ForgeRpc {
         let uuid = parse_id(&id)?;
         let record = self.registry.get(uuid).await.map_err(to_rpc_error)?;
 
-        // Stop if running
         if record.status == AgentStatus::Running {
             self.stop_agent(id).await?;
         }
 
-        // Clean up MCP client if any
         self.mcp_manager.remove_client(uuid).await;
 
         self.registry.remove(uuid).await.map_err(to_rpc_error)?;
@@ -371,5 +410,20 @@ impl ForgeApiServer for ForgeRpc {
             .map_err(to_rpc_error)?;
 
         serde_json::to_value(&result).map_err(to_rpc_error)
+    }
+
+    async fn a2a_discover(&self, url: String) -> Result<AgentCard, ErrorObjectOwned> {
+        A2aClient::fetch_card(&url).await.map_err(to_rpc_error)
+    }
+
+    async fn a2a_send(
+        &self,
+        url: String,
+        skill: String,
+        input: serde_json::Value,
+    ) -> Result<TaskResponse, ErrorObjectOwned> {
+        A2aClient::send_task(&url, &skill, input)
+            .await
+            .map_err(to_rpc_error)
     }
 }

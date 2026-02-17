@@ -30,6 +30,12 @@ impl McpManager {
         map.get(&id).cloned()
     }
 
+    /// Get all registered MCP clients.
+    pub async fn get_all_clients(&self) -> Vec<(AgentId, Arc<McpClient>)> {
+        let map = self.clients.lock().await;
+        map.iter().map(|(k, v)| (*k, v.clone())).collect()
+    }
+
     /// Shut down and remove the MCP client for an agent.
     pub async fn remove_client(&self, id: AgentId) {
         let client = {

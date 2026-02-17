@@ -55,6 +55,18 @@ impl Database {
                 FOREIGN KEY (agent_id) REFERENCES agents(id),
                 UNIQUE(agent_id, key)
             );
+
+            CREATE TABLE IF NOT EXISTS tasks (
+                id          TEXT PRIMARY KEY,
+                source      TEXT,
+                target      TEXT NOT NULL,
+                input       TEXT NOT NULL,
+                status      TEXT NOT NULL,
+                output      TEXT,
+                error       TEXT,
+                created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+            );
             ",
         )?;
 

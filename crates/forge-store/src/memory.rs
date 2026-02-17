@@ -72,4 +72,13 @@ impl Database {
         }
         Ok(keys)
     }
+
+    pub fn cleanup_expired_memory(&self) -> Result<usize, rusqlite::Error> {
+        let now = Utc::now().to_rfc3339();
+        let count = self.conn.execute(
+            "DELETE FROM shared_memory WHERE expires_at IS NOT NULL AND expires_at <= ?1",
+            params![now],
+        )?;
+        Ok(count)
+    }
 }

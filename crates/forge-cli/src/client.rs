@@ -1,6 +1,6 @@
 use anyhow::Result;
 use forge_core::{AgentManifest, AgentRecord, AgentSummary, Message};
-use forge_transport::a2a::{AgentCard, TaskResponse};
+use forge_transport::a2a::{AgentCard, TaskResponse, TaskDetails};
 use jsonrpsee::core::client::ClientT;
 use jsonrpsee::core::params::ObjectParams;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
@@ -134,6 +134,14 @@ impl ForgeClient {
         params.insert("skill", skill)?;
         params.insert("input", &input)?;
         let result: TaskResponse = self.client.request("forge.a2aSend", params).await?;
+        Ok(result)
+    }
+
+    pub async fn a2a_get_task(&self, url: &str, task_id: &str) -> Result<forge_transport::a2a::TaskDetails> {
+        let mut params = ObjectParams::new();
+        params.insert("url", url)?;
+        params.insert("task_id", task_id)?;
+        let result: forge_transport::a2a::TaskDetails = self.client.request("forge.a2aGetTask", params).await?;
         Ok(result)
     }
 

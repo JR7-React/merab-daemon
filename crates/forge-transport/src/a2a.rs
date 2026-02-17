@@ -136,4 +136,54 @@ impl A2aClient {
         
         rpc_res.result.ok_or_else(|| anyhow!("No result in RPC response"))
     }
+
+    pub async fn get_task_status(url_str: &str, task_id: &str) -> Result<TaskDetails> {
+        let url = Url::parse(url_str)?;
+        let host = url.host_str().ok_or_else(|| anyhow!("Missing host"))?;
+        let port = url.port_or_known_default().unwrap_or(80);
+        
+        let addr = format!("{}:{}", host, port);
+        let stream = TcpStream::connect(addr).await?;
+        let io = TokioIo::new(stream);
+        let (mut sender, conn) = http1::handshake(io).await?;
+
+        tokio::task::spawn(async move {
+            if let Err(err) = conn.await {
+                tracing::error!("Connection failed: {:?}", err);
+            }
+        });
+
+        let rpc_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "tasks/get",
+            "params": {
+                "task_id": task_id
+            },
+            "id": 1
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri(url_str)
+            .header("Host", host)
+            .header("Content-Type", "application/json")
+            .body(Full::new(Bytes::from(rpc_req.to_string())))?;
+
+        let mut res = sender.send_request(req).await?;
+        let body_bytes = res.into_body().collect().await?.to_bytes();
+        
+        #[derive(Deserialize)]
+        struct RpcResponse {
+            result: Option<TaskDetails>,
+            error: Option<Value>,
+        }
+        
+        let rpc_res: RpcResponse = serde_json::from_slice(&body_bytes)?;
+        
+        if let Some(err) = rpc_res.error {
+            return Err(anyhow!("RPC Error: {:?}", err));
+        }
+        
+        rpc_res.result.ok_or_else(|| anyhow!("No result in RPC response"))
+    }
 }

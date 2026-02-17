@@ -243,8 +243,29 @@ async fn main() -> Result<()> {
         }
         Commands::A2aSend { url, skill, input } => {
             let args: serde_json::Value = serde_json::from_str(&input)?;
-            let result = client.a2a_send(&url, &skill, args).await?;
-            println!("{}", serde_json::to_string_pretty(&result)?);
+            println!("Sending task to {}...", url);
+            let response = client.a2a_send(&url, &skill, args).await?;
+            println!("Task submitted. ID: {} (Status: {})", response.task_id, response.status);
+            
+            // Poll for completion
+            let mut status = response.status;
+            while status != "completed" && status != "failed" && status != "cancelled" {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                print!("."); // Progress indicator
+                use std::io::Write;
+                std::io::stdout().flush()?;
+                
+                let details = client.a2a_get_task(&url, &response.task_id).await?;
+                status = details.status;
+                
+                if status == "completed" {
+                    println!("\nTask Completed!");
+                    println!("Output: {}", serde_json::to_string_pretty(&details.output)?);
+                } else if status == "failed" {
+                    println!("\nTask Failed!");
+                    println!("Error: {:?}", details.error);
+                }
+            }
         }
         Commands::Memory(cmd) => match cmd {
             MemoryCommands::Put { key, value, ttl } => {

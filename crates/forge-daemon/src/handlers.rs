@@ -83,6 +83,13 @@ pub trait ForgeApi {
         input: serde_json::Value,
     ) -> Result<TaskResponse, ErrorObjectOwned>;
 
+    #[method(name = "forge.a2aGetTask")]
+    async fn a2a_get_task(
+        &self,
+        url: String,
+        task_id: String,
+    ) -> Result<forge_transport::a2a::TaskDetails, ErrorObjectOwned>;
+
     #[method(name = "forge.memory.put")]
     async fn memory_put(
         &self,
@@ -192,7 +199,13 @@ impl ForgeApiServer for ForgeRpc {
 
             // Create Job Object (Sandbox)
             let job_object = match forge_sandbox::JobObject::new() {
-                Ok(job) => Some(job),
+                Ok(job) => {
+                    // Set default memory limit: 512 MB
+                    if let Err(e) = job.set_memory_limit(512 * 1024 * 1024) {
+                        tracing::warn!(id = %uuid, error = %e, "failed to set memory limit for job object");
+                    }
+                    Some(job)
+                },
                 Err(e) => {
                     tracing::warn!(id = %uuid, error = %e, "failed to create job object for agent");
                     None
@@ -426,6 +439,16 @@ impl ForgeApiServer for ForgeRpc {
             .map_err(to_rpc_error)
     }
 
+    async fn a2a_get_task(
+        &self,
+        url: String,
+        task_id: String,
+    ) -> Result<forge_transport::a2a::TaskDetails, ErrorObjectOwned> {
+        A2aClient::get_task_status(&url, &task_id)
+            .await
+            .map_err(to_rpc_error)
+    }
+
     async fn memory_put(
         &self,
         key: String,
@@ -435,6 +458,12 @@ impl ForgeApiServer for ForgeRpc {
         let db = self.db.lock().await;
         // Assume global scope for now (agent_id = None)
         db.put_memory(&key, &value, None, ttl_seconds).map_err(to_rpc_error)?;
+        
+        // Lazy cleanup
+        if let Err(e) = db.cleanup_expired_memory() {
+            tracing::warn!("failed to cleanup expired memory: {}", e);
+        }
+        
         Ok(true)
     }
 

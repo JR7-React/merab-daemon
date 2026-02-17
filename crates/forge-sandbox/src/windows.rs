@@ -6,7 +6,7 @@ use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
     SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOB_OBJECT_LIMIT_PROCESS_MEMORY,
 };
 use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE};
 
@@ -84,8 +84,27 @@ impl JobObject {
             Ok(())
         }
     }
-    
-    // TODO: Add methods for memory limits (JOB_OBJECT_LIMIT_PROCESS_MEMORY)
+
+    /// Set memory limit for processes in the job.
+    pub fn set_memory_limit(&self, limit_bytes: usize) -> Result<()> {
+        let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { mem::zeroed() };
+        info.BasicLimitInformation.LimitFlags = windows_sys::Win32::System::JobObjects::JOB_OBJECT_LIMIT_PROCESS_MEMORY;
+        info.ProcessMemoryLimit = limit_bytes;
+
+        let result = unsafe {
+            SetInformationJobObject(
+                self.handle,
+                JobObjectExtendedLimitInformation,
+                &info as *const _ as *const _,
+                mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            )
+        };
+
+        if result == 0 {
+            return Err(std::io::Error::last_os_error()).context("Failed to set job memory limit");
+        }
+        Ok(())
+    }
 }
 
 impl Drop for JobObject {

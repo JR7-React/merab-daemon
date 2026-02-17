@@ -106,6 +106,33 @@ enum Commands {
         #[arg(default_value = "{}")]
         input: String,
     },
+    /// Shared Memory Operations
+    #[command(subcommand)]
+    Memory(MemoryCommands),
+}
+
+#[derive(Subcommand)]
+enum MemoryCommands {
+    /// Store a value in shared memory
+    Put {
+        key: String,
+        value: String,
+        #[arg(long)]
+        ttl: Option<u64>,
+    },
+    /// Retrieve a value from shared memory
+    Get {
+        key: String,
+    },
+    /// Delete a value from shared memory
+    Delete {
+        key: String,
+    },
+    /// List keys in shared memory
+    List {
+        #[arg(long)]
+        prefix: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -219,7 +246,39 @@ async fn main() -> Result<()> {
             let result = client.a2a_send(&url, &skill, args).await?;
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
+        Commands::Memory(cmd) => match cmd {
+            MemoryCommands::Put { key, value, ttl } => {
+                let json_value: serde_json::Value = serde_json::from_str(&value).unwrap_or(serde_json::Value::String(value));
+                client.memory_put(&key, json_value, ttl).await?;
+                println!("Stored key: {}", key);
+            }
+            MemoryCommands::Get { key } => {
+                match client.memory_get(&key).await? {
+                    Some(val) => println!("{}", serde_json::to_string_pretty(&val)?),
+                    None => println!("Key not found or expired."),
+                }
+            }
+            MemoryCommands::Delete { key } => {
+                let deleted = client.memory_delete(&key).await?;
+                if deleted {
+                    println!("Deleted key: {}", key);
+                } else {
+                    println!("Key not found.");
+                }
+            }
+            MemoryCommands::List { prefix } => {
+                let keys = client.memory_list(prefix.as_deref()).await?;
+                if keys.is_empty() {
+                    println!("No keys found.");
+                } else {
+                    for k in keys {
+                        println!("{}", k);
+                    }
+                }
+            }
+        },
     }
 
     Ok(())
 }
+

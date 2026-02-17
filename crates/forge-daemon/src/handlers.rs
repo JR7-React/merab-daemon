@@ -82,6 +82,23 @@ pub trait ForgeApi {
         skill: String,
         input: serde_json::Value,
     ) -> Result<TaskResponse, ErrorObjectOwned>;
+
+    #[method(name = "forge.memory.put")]
+    async fn memory_put(
+        &self,
+        key: String,
+        value: serde_json::Value,
+        ttl_seconds: Option<u64>,
+    ) -> Result<bool, ErrorObjectOwned>;
+
+    #[method(name = "forge.memory.get")]
+    async fn memory_get(&self, key: String) -> Result<Option<serde_json::Value>, ErrorObjectOwned>;
+
+    #[method(name = "forge.memory.delete")]
+    async fn memory_delete(&self, key: String) -> Result<bool, ErrorObjectOwned>;
+
+    #[method(name = "forge.memory.list")]
+    async fn memory_list(&self, prefix: Option<String>) -> Result<Vec<String>, ErrorObjectOwned>;
 }
 
 pub struct ForgeRpc {
@@ -90,6 +107,7 @@ pub struct ForgeRpc {
     pub supervisor: Arc<ProcessSupervisor>,
     pub mcp_manager: Arc<McpManager>,
 }
+
 
 fn to_rpc_error(e: impl std::fmt::Display) -> ErrorObjectOwned {
     ErrorObjectOwned::owned(-32000, e.to_string(), None::<()>)
@@ -426,4 +444,32 @@ impl ForgeApiServer for ForgeRpc {
             .await
             .map_err(to_rpc_error)
     }
+
+    async fn memory_put(
+        &self,
+        key: String,
+        value: serde_json::Value,
+        ttl_seconds: Option<u64>,
+    ) -> Result<bool, ErrorObjectOwned> {
+        let db = self.db.lock().await;
+        // Assume global scope for now (agent_id = None)
+        db.put_memory(&key, &value, None, ttl_seconds).map_err(to_rpc_error)?;
+        Ok(true)
+    }
+
+    async fn memory_get(&self, key: String) -> Result<Option<serde_json::Value>, ErrorObjectOwned> {
+        let db = self.db.lock().await;
+        db.get_memory(&key).map_err(to_rpc_error)
+    }
+
+    async fn memory_delete(&self, key: String) -> Result<bool, ErrorObjectOwned> {
+        let db = self.db.lock().await;
+        db.delete_memory(&key).map_err(to_rpc_error)
+    }
+
+    async fn memory_list(&self, prefix: Option<String>) -> Result<Vec<String>, ErrorObjectOwned> {
+        let db = self.db.lock().await;
+        db.list_memory_keys(prefix.as_deref()).map_err(to_rpc_error)
+    }
 }
+

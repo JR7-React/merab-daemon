@@ -136,4 +136,40 @@ impl ForgeClient {
         let result: TaskResponse = self.client.request("forge.a2aSend", params).await?;
         Ok(result)
     }
+
+    pub async fn memory_put(
+        &self,
+        key: &str,
+        value: serde_json::Value,
+        ttl_seconds: Option<u64>,
+    ) -> Result<bool> {
+        let mut params = ObjectParams::new();
+        params.insert("key", key)?;
+        params.insert("value", &value)?;
+        params.insert("ttl_seconds", ttl_seconds)?;
+        let result: bool = self.client.request("forge.memory.put", params).await?;
+        Ok(result)
+    }
+
+    pub async fn memory_get(&self, key: &str) -> Result<Option<serde_json::Value>> {
+        let mut params = ObjectParams::new();
+        params.insert("key", key)?;
+        let result: Option<serde_json::Value> = self.client.request("forge.memory.get", params).await?;
+        Ok(result)
+    }
+
+    pub async fn memory_delete(&self, key: &str) -> Result<bool> {
+        let mut params = ObjectParams::new();
+        params.insert("key", key)?;
+        let result: bool = self.client.request("forge.memory.delete", params).await?;
+        Ok(result)
+    }
+
+    pub async fn memory_list(&self, prefix: Option<&str>) -> Result<Vec<String>> {
+        let mut params = ObjectParams::new();
+        params.insert("prefix", prefix)?;
+        let result: Vec<String> = self.client.request("forge.memory.list", params).await?;
+        Ok(result)
+    }
 }
+

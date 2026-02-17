@@ -80,6 +80,15 @@ impl Database {
             );
             
             CREATE INDEX IF NOT EXISTS idx_cache_hash ON llm_cache(hash);
+
+            CREATE TABLE IF NOT EXISTS shared_memory (
+                key         TEXT PRIMARY KEY,
+                value       TEXT NOT NULL,
+                agent_id    TEXT,
+                created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+                expires_at  TEXT
+            );
             ",
         )?;
 

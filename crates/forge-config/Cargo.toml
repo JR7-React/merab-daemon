@@ -1,0 +1,10 @@
+[package]
+name = "forge-config"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde = { workspace = true }
+config = "0.14"
+anyhow = { workspace = true }
+dirs = "5.0"

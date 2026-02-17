@@ -58,27 +58,16 @@ async fn handle_request(
 }
 
 async fn handle_agent_card(ctx: Arc<A2AContext>) -> Result<Response<Full<Bytes>>, Infallible> {
-    let mut skills = Vec::new();
-    let clients = ctx.mcp_manager.get_all_clients().await;
-
-    for (agent_id, client) in clients {
-        match client.list_tools().await {
-            Ok(tools) => {
-                for tool in tools {
-                    skills.push(AgentSkill {
-                        id: tool.name.clone(),
-                        name: tool.name,
-                        description: tool.description,
-                        input_modes: vec!["text".to_string()],  // Default assumptions
-                        output_modes: vec!["text".to_string()],
-                    });
-                }
-            }
-            Err(e) => {
-                tracing::warn!(id = %agent_id, error = %e, "failed to list tools for agent card");
-            }
-        }
-    }
+    // Optimized: get tools from index (O(1) access to memory map)
+    let tools = ctx.mcp_manager.get_all_tools().await;
+    
+    let skills = tools.into_iter().map(|t| AgentSkill {
+        id: t.name.clone(),
+        name: t.name,
+        description: t.description,
+        input_modes: vec!["text".to_string()],
+        output_modes: vec!["text".to_string()],
+    }).collect();
 
     let card = AgentCard {
         name: "Forge Runtime".to_string(),
@@ -199,37 +188,18 @@ async fn execute_task(ctx: Arc<A2AContext>, task_id: Uuid, skill: String, input:
         let _ = db.update_task_status(&task_id.to_string(), TaskStatus::Running, None, None);
     }
     
-    // Find the agent that has this skill (tool)
-    let clients = ctx.mcp_manager.get_all_clients().await;
-    let mut target_client = None;
-
-    for (_id, client) in clients {
-        // We have to list tools to check if it supports the skill
-        // This is inefficient (O(N*M)) but fine for MVP with few agents
-        if let Ok(tools) = client.list_tools().await {
-            if tools.iter().any(|t| t.name == skill) {
-                target_client = Some(client);
-                break;
-            }
-        }
-    }
+    // Optimized: Find agent directly from index (O(1))
+    let target_client = ctx.mcp_manager.find_agent_for_tool(&skill).await;
     
     let result = if let Some(client) = target_client {
-        // Convert input to Map if possible, otherwise wrap or error
         let args = match input {
             Value::Object(map) => Some(map),
             Value::Null => None,
-            _ => {
-                // If input is not an object, try to wrap it in a default key "arg"
-                // or just fail. For now, let's fail if it's not object/null
-                 None // Will likely fail if tool expects args
-            }
+            _ => None // Should probably improve error handling for non-object args
         };
 
         match client.call_tool(skill, args).await {
             Ok(res) => {
-                // Serialize CallToolResult content
-                // rmcp CallToolResult has `content` field
                 match serde_json::to_string(&res.content) {
                     Ok(s) => Ok(s),
                     Err(e) => Err(format!("Serialization error: {}", e)),

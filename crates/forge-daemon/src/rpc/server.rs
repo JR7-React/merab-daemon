@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use forge_core::{AgentManifest, AgentRecord, AgentStatus, AgentSummary, Message, ProtocolKind};
+use forge_config::ForgeConfig;
+use forge_core::{
+    AgentManifest, AgentRecord, AgentStatus, AgentSummary, ForgeError, Message, ProtocolKind,
+};
 use forge_store::Database;
 use forge_transport::a2a::{A2aClient, AgentCard, TaskResponse};
 use forge_transport::mcp::McpToolInfo;
@@ -113,14 +116,21 @@ pub struct ForgeRpc {
     pub db: Arc<Mutex<Database>>,
     pub supervisor: Arc<ProcessSupervisor>,
     pub mcp_manager: Arc<McpManager>,
+    pub config: Arc<ForgeConfig>,
+}
+
+impl From<ForgeError> for ErrorObjectOwned {
+    fn from(e: ForgeError) -> Self {
+        ErrorObjectOwned::owned(e.code(), e.to_string(), None::<()>)
+    }
 }
 
 fn to_rpc_error(e: impl std::fmt::Display) -> ErrorObjectOwned {
-    ErrorObjectOwned::owned(-32000, e.to_string(), None::<()>)
+    ForgeError::Internal(e.to_string()).into()
 }
 
 fn parse_id(id: &str) -> Result<Uuid, ErrorObjectOwned> {
-    Uuid::parse_str(id).map_err(|_| ErrorObjectOwned::owned(-32602, "invalid agent id", None::<()>))
+    Uuid::parse_str(id).map_err(|_| ForgeError::InvalidManifest("invalid agent id".into()).into())
 }
 
 #[async_trait]
@@ -134,11 +144,17 @@ impl ForgeApiServer for ForgeRpc {
         manifest: AgentManifest,
     ) -> Result<AgentRecord, ErrorObjectOwned> {
         let record = AgentRecord::new(manifest);
+        
+        // Check if exists
+        if self.registry.get(record.id).await.is_ok() {
+             return Err(ForgeError::AlreadyExists(record.id.to_string()).into());
+        }
+
         {
             let db = self.db.lock().await;
-            db.insert_agent(&record).map_err(to_rpc_error)?;
+            db.insert_agent(&record).map_err(|e| ForgeError::Store(e.to_string()))?;
         }
-        self.registry.register(record.clone()).await.map_err(to_rpc_error)?;
+        self.registry.register(record.clone()).await.map_err(|e| ForgeError::Internal(e.to_string()))?;
         tracing::info!(id = %record.id, name = %record.manifest.name, "agent registered");
         Ok(record)
     }
@@ -149,15 +165,15 @@ impl ForgeApiServer for ForgeRpc {
 
     async fn get_agent(&self, id: String) -> Result<AgentRecord, ErrorObjectOwned> {
         let uuid = parse_id(&id)?;
-        self.registry.get(uuid).await.map_err(to_rpc_error)
+        self.registry.get(uuid).await.map_err(|_| ForgeError::AgentNotFound(uuid).into())
     }
 
     async fn start_agent(&self, id: String) -> Result<AgentRecord, ErrorObjectOwned> {
         let uuid = parse_id(&id)?;
-        let record = self.registry.get(uuid).await.map_err(to_rpc_error)?;
+        let record = self.registry.get(uuid).await.map_err(|_| ForgeError::AgentNotFound(uuid).into())?;
 
         if record.status == AgentStatus::Running {
-            return Err(to_rpc_error(format!("agent already running: {uuid}")));
+            return Err(ForgeError::AlreadyRunning(uuid).into());
         }
 
         let manifest = &record.manifest;
@@ -170,7 +186,6 @@ impl ForgeApiServer for ForgeRpc {
         }
 
         if is_mcp {
-            // MCP agents need piped stdin/stdout for JSON-RPC communication
             cmd.stdin(std::process::Stdio::piped());
             cmd.stdout(std::process::Stdio::piped());
             cmd.stderr(std::process::Stdio::null());
@@ -178,12 +193,12 @@ impl ForgeApiServer for ForgeRpc {
             let mcp_client =
                 forge_transport::mcp::McpClient::connect(uuid, cmd)
                     .await
-                    .map_err(|e| to_rpc_error(format!("MCP handshake failed: {e}")))?;
+                    .map_err(|e| ForgeError::Transport(e.to_string()))?;
 
             self.registry
                 .update_status(uuid, AgentStatus::Running, None)
                 .await
-                .map_err(to_rpc_error)?;
+                .map_err(|e| ForgeError::Internal(e.to_string()))?;
 
             {
                 let db = self.db.lock().await;
@@ -197,12 +212,13 @@ impl ForgeApiServer for ForgeRpc {
             cmd.stdout(std::process::Stdio::null());
             cmd.stderr(std::process::Stdio::null());
 
-            // Create Job Object (Sandbox)
             let job_object = match forge_sandbox::JobObject::new() {
                 Ok(job) => {
-                    // Set default memory limit: 512 MB
-                    if let Err(e) = job.set_memory_limit(512 * 1024 * 1024) {
-                        tracing::warn!(id = %uuid, error = %e, "failed to set memory limit for job object");
+                    if self.config.sandbox.enabled {
+                        let limit_bytes = self.config.sandbox.memory_limit_mb * 1024 * 1024;
+                        if let Err(e) = job.set_memory_limit(limit_bytes) {
+                            tracing::warn!(id = %uuid, error = %e, "failed to set memory limit for job object");
+                        }
                     }
                     Some(job)
                 },
@@ -213,12 +229,11 @@ impl ForgeApiServer for ForgeRpc {
             };
 
             let child = cmd.spawn().map_err(|e| {
-                to_rpc_error(format!("failed to start agent process: {e}"))
+                ForgeError::Internal(format!("failed to start agent process: {}", e))
             })?;
 
             let pid = child.id();
             
-            // Assign to Job Object if created
             if let (Some(pid), Some(job)) = (pid, &job_object) {
                 if let Err(e) = job.assign_process(pid) {
                     tracing::warn!(id = %uuid, error = %e, "failed to assign process to job object");
@@ -228,7 +243,7 @@ impl ForgeApiServer for ForgeRpc {
             self.registry
                 .update_status(uuid, AgentStatus::Running, pid)
                 .await
-                .map_err(to_rpc_error)?;
+                .map_err(|e| ForgeError::Internal(e.to_string()))?;
 
             {
                 let db = self.db.lock().await;
@@ -242,15 +257,15 @@ impl ForgeApiServer for ForgeRpc {
             tracing::info!(id = %uuid, pid = ?pid, "agent started");
         }
 
-        self.registry.get(uuid).await.map_err(to_rpc_error)
+        self.registry.get(uuid).await.map_err(|_| ForgeError::AgentNotFound(uuid).into())
     }
 
     async fn stop_agent(&self, id: String) -> Result<AgentRecord, ErrorObjectOwned> {
         let uuid = parse_id(&id)?;
-        let record = self.registry.get(uuid).await.map_err(to_rpc_error)?;
+        let record = self.registry.get(uuid).await.map_err(|_| ForgeError::AgentNotFound(uuid).into())?;
 
         if record.status != AgentStatus::Running {
-            return Err(to_rpc_error(format!("agent not running: {uuid}")));
+            return Err(ForgeError::NotRunning(uuid).into());
         }
 
         let is_mcp = record.manifest.protocol == ProtocolKind::Mcp;
@@ -282,7 +297,7 @@ impl ForgeApiServer for ForgeRpc {
         self.registry
             .update_status(uuid, AgentStatus::Stopped, None)
             .await
-            .map_err(to_rpc_error)?;
+            .map_err(|e| ForgeError::Internal(e.to_string()))?;
 
         {
             let db = self.db.lock().await;
@@ -290,12 +305,12 @@ impl ForgeApiServer for ForgeRpc {
         }
 
         tracing::info!(id = %uuid, "agent stopped");
-        self.registry.get(uuid).await.map_err(to_rpc_error)
+        self.registry.get(uuid).await.map_err(|_| ForgeError::AgentNotFound(uuid).into())
     }
 
     async fn unregister_agent(&self, id: String) -> Result<bool, ErrorObjectOwned> {
         let uuid = parse_id(&id)?;
-        let record = self.registry.get(uuid).await.map_err(to_rpc_error)?;
+        let record = self.registry.get(uuid).await.map_err(|_| ForgeError::AgentNotFound(uuid).into())?;
 
         if record.status == AgentStatus::Running {
             self.stop_agent(id).await?;
@@ -303,7 +318,7 @@ impl ForgeApiServer for ForgeRpc {
 
         self.mcp_manager.remove_client(uuid).await;
 
-        self.registry.remove(uuid).await.map_err(to_rpc_error)?;
+        self.registry.remove(uuid).await.map_err(|e| ForgeError::Internal(e.to_string()))?;
 
         {
             let db = self.db.lock().await;
@@ -324,13 +339,13 @@ impl ForgeApiServer for ForgeRpc {
         let from_id = parse_id(&from)?;
         let to_id = parse_id(&to)?;
 
-        self.registry.get(from_id).await.map_err(to_rpc_error)?;
-        self.registry.get(to_id).await.map_err(to_rpc_error)?;
+        self.registry.get(from_id).await.map_err(|_| ForgeError::AgentNotFound(from_id).into())?;
+        self.registry.get(to_id).await.map_err(|_| ForgeError::AgentNotFound(to_id).into())?;
 
         let msg = Message::new(from_id, Some(to_id), content);
         {
             let db = self.db.lock().await;
-            db.insert_message(&msg).map_err(to_rpc_error)?;
+            db.insert_message(&msg).map_err(|e| ForgeError::Store(e.to_string()))?;
         }
         tracing::info!(id = %msg.id, from = %from_id, to = %to_id, "message sent");
         Ok(msg)
@@ -343,12 +358,12 @@ impl ForgeApiServer for ForgeRpc {
     ) -> Result<Message, ErrorObjectOwned> {
         let from_id = parse_id(&from)?;
 
-        self.registry.get(from_id).await.map_err(to_rpc_error)?;
+        self.registry.get(from_id).await.map_err(|_| ForgeError::AgentNotFound(from_id).into())?;
 
         let msg = Message::new(from_id, None, content);
         {
             let db = self.db.lock().await;
-            db.insert_message(&msg).map_err(to_rpc_error)?;
+            db.insert_message(&msg).map_err(|e| ForgeError::Store(e.to_string()))?;
         }
         tracing::info!(id = %msg.id, from = %from_id, "broadcast sent");
         Ok(msg)
@@ -357,16 +372,16 @@ impl ForgeApiServer for ForgeRpc {
     async fn get_messages(&self, agent_id: String) -> Result<Vec<Message>, ErrorObjectOwned> {
         let uuid = parse_id(&agent_id)?;
         let db = self.db.lock().await;
-        let messages = db.get_messages_for(uuid).map_err(to_rpc_error)?;
+        let messages = db.get_messages_for(uuid).map_err(|e| ForgeError::Store(e.to_string()))?;
         Ok(messages)
     }
 
     async fn ack_message(&self, message_id: String) -> Result<bool, ErrorObjectOwned> {
         let uuid = parse_id(&message_id)?;
         let db = self.db.lock().await;
-        let updated = db.acknowledge_message(uuid).map_err(to_rpc_error)?;
+        let updated = db.acknowledge_message(uuid).map_err(|e| ForgeError::Store(e.to_string()))?;
         if !updated {
-            return Err(ErrorObjectOwned::owned(-32000, format!("message not found: {uuid}"), None::<()>));
+            return Err(ForgeError::MessageNotFound(uuid).into());
         }
         tracing::info!(id = %uuid, "message acknowledged");
         Ok(true)
@@ -374,20 +389,20 @@ impl ForgeApiServer for ForgeRpc {
 
     async fn list_tools(&self, agent_id: String) -> Result<Vec<McpToolInfo>, ErrorObjectOwned> {
         let uuid = parse_id(&agent_id)?;
-        let record = self.registry.get(uuid).await.map_err(to_rpc_error)?;
+        let record = self.registry.get(uuid).await.map_err(|_| ForgeError::AgentNotFound(uuid).into())?;
 
         if record.manifest.protocol != ProtocolKind::Mcp {
-            return Err(to_rpc_error(format!("agent {uuid} is not an MCP agent")));
+            return Err(ForgeError::InvalidManifest("not an MCP agent".into()).into());
         }
         if record.status != AgentStatus::Running {
-            return Err(to_rpc_error(format!("agent {uuid} is not running")));
+            return Err(ForgeError::NotRunning(uuid).into());
         }
 
         let client = self.mcp_manager.get_client(uuid).await.ok_or_else(|| {
-            to_rpc_error(format!("no MCP client found for agent {uuid}"))
+            ForgeError::Internal("MCP client not found despite agent running".into())
         })?;
 
-        client.list_tools().await.map_err(to_rpc_error)
+        client.list_tools().await.map_err(|e| ForgeError::Transport(e.to_string()).into())
     }
 
     async fn call_tool(
@@ -397,29 +412,29 @@ impl ForgeApiServer for ForgeRpc {
         arguments: serde_json::Value,
     ) -> Result<serde_json::Value, ErrorObjectOwned> {
         let uuid = parse_id(&agent_id)?;
-        let record = self.registry.get(uuid).await.map_err(to_rpc_error)?;
+        let record = self.registry.get(uuid).await.map_err(|_| ForgeError::AgentNotFound(uuid).into())?;
 
         if record.manifest.protocol != ProtocolKind::Mcp {
-            return Err(to_rpc_error(format!("agent {uuid} is not an MCP agent")));
+            return Err(ForgeError::InvalidManifest("not an MCP agent".into()).into());
         }
         if record.status != AgentStatus::Running {
-            return Err(to_rpc_error(format!("agent {uuid} is not running")));
+            return Err(ForgeError::NotRunning(uuid).into());
         }
 
         let client = self.mcp_manager.get_client(uuid).await.ok_or_else(|| {
-            to_rpc_error(format!("no MCP client found for agent {uuid}"))
+            ForgeError::Internal("MCP client not found despite agent running".into())
         })?;
 
         let args = match arguments {
             serde_json::Value::Object(map) => Some(map),
             serde_json::Value::Null => None,
-            _ => return Err(to_rpc_error("arguments must be a JSON object or null")),
+            _ => return Err(ForgeError::InvalidManifest("arguments must be object".into()).into()),
         };
 
         let result = client
             .call_tool(tool_name, args)
             .await
-            .map_err(to_rpc_error)?;
+            .map_err(|e| ForgeError::Transport(e.to_string()))?;
 
         serde_json::to_value(&result).map_err(to_rpc_error)
     }
@@ -457,7 +472,7 @@ impl ForgeApiServer for ForgeRpc {
     ) -> Result<bool, ErrorObjectOwned> {
         let db = self.db.lock().await;
         // Assume global scope for now (agent_id = None)
-        db.put_memory(&key, &value, None, ttl_seconds).map_err(to_rpc_error)?;
+        db.put_memory(&key, &value, None, ttl_seconds).map_err(|e| ForgeError::Store(e.to_string()))?;
         
         // Lazy cleanup
         if let Err(e) = db.cleanup_expired_memory() {
@@ -469,16 +484,16 @@ impl ForgeApiServer for ForgeRpc {
 
     async fn memory_get(&self, key: String) -> Result<Option<serde_json::Value>, ErrorObjectOwned> {
         let db = self.db.lock().await;
-        db.get_memory(&key).map_err(to_rpc_error)
+        db.get_memory(&key).map_err(|e| ForgeError::Store(e.to_string()).into())
     }
 
     async fn memory_delete(&self, key: String) -> Result<bool, ErrorObjectOwned> {
         let db = self.db.lock().await;
-        db.delete_memory(&key).map_err(to_rpc_error)
+        db.delete_memory(&key).map_err(|e| ForgeError::Store(e.to_string()).into())
     }
 
     async fn memory_list(&self, prefix: Option<String>) -> Result<Vec<String>, ErrorObjectOwned> {
         let db = self.db.lock().await;
-        db.list_memory_keys(prefix.as_deref()).map_err(to_rpc_error)
+        db.list_memory_keys(prefix.as_deref()).map_err(|e| ForgeError::Store(e.to_string()).into())
     }
 }

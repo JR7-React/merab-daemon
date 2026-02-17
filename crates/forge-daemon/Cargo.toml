@@ -12,6 +12,7 @@ forge-core = { path = "../forge-core" }
 forge-store = { path = "../forge-store" }
 forge-transport = { path = "../forge-transport" }
 forge-sandbox = { path = "../forge-sandbox" }
+forge-config = { path = "../forge-config" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

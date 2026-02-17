@@ -7,13 +7,14 @@ use jsonrpsee::server::Server;
 use tokio::sync::Mutex;
 use tracing_subscriber::EnvFilter;
 
+use forge_config::ForgeConfig;
 use forge_core::AgentStatus;
 use forge_daemon::a2a_server::{start_a2a_server, A2AContext};
-use forge_daemon::handlers::{ForgeApiServer, ForgeRpc};
 use forge_daemon::mcp_manager::McpManager;
 use forge_daemon::process::is_process_alive;
 use forge_daemon::proxy::{start_proxy_server, ProxyContext};
 use forge_daemon::registry::AgentRegistry;
+use forge_daemon::rpc::{ForgeApiServer, ForgeRpc};
 use forge_daemon::supervisor::ProcessSupervisor;
 use forge_store::Database;
 
@@ -28,9 +29,22 @@ async fn main() -> Result<()> {
         )
         .init();
 
+    // Load configuration
+    let config = Arc::new(ForgeConfig::load().unwrap_or_else(|e| {
+        tracing::warn!("Failed to load config, using defaults: {}", e);
+        ForgeConfig::default()
+    }));
+    tracing::info!("Configuration loaded: {:?}", config);
+
     let data_dir = dirs_data_dir().join("forge");
     std::fs::create_dir_all(&data_dir)?;
-    let db_path = data_dir.join("forge.db");
+    
+    // Use config db_path if provided, otherwise default
+    let db_path = if let Some(path) = &config.daemon.db_path {
+        PathBuf::from(path)
+    } else {
+        data_dir.join("forge.db")
+    };
 
     tracing::info!(path = %db_path.display(), "opening database");
     let db = Database::open(&db_path)?;
@@ -50,7 +64,8 @@ async fn main() -> Result<()> {
         db: db.clone(),
         mcp_manager: mcp_manager.clone(),
     });
-    let a2a_addr = SocketAddr::from(([127, 0, 0, 1], 8080));
+    let a2a_port = config.daemon.a2a_port;
+    let a2a_addr = SocketAddr::from(([127, 0, 0, 1], a2a_port));
     tokio::spawn(async move {
         if let Err(e) = start_a2a_server(a2a_addr, a2a_ctx).await {
             tracing::error!("A2A server failed: {:?}", e);
@@ -58,30 +73,35 @@ async fn main() -> Result<()> {
     });
 
     // Start LLM Proxy Server
-    let proxy_upstream = std::env::var("FORGE_PROXY_UPSTREAM_URL")
-        .unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
-    let proxy_key = std::env::var("FORGE_PROXY_API_KEY").ok();
+    if config.proxy.enabled {
+        let proxy_upstream = config.proxy.upstream_url.clone();
+        let proxy_key = config.proxy.api_key.clone()
+            .or_else(|| std::env::var("FORGE_PROXY_API_KEY").ok());
 
-    let proxy_ctx = Arc::new(ProxyContext {
-        db: db.clone(),
-        upstream_url: proxy_upstream,
-        api_key: proxy_key,
-    });
-    let proxy_addr = SocketAddr::from(([127, 0, 0, 1], 8001));
-    tokio::spawn(async move {
-        if let Err(e) = start_proxy_server(proxy_addr, proxy_ctx).await {
-            tracing::error!("Proxy server failed: {:?}", e);
-        }
-    });
+        let proxy_ctx = Arc::new(ProxyContext {
+            db: db.clone(),
+            upstream_url: proxy_upstream,
+            api_key: proxy_key,
+        });
+        let proxy_port = config.proxy.port;
+        let proxy_addr = SocketAddr::from(([127, 0, 0, 1], proxy_port));
+        tokio::spawn(async move {
+            if let Err(e) = start_proxy_server(proxy_addr, proxy_ctx).await {
+                tracing::error!("Proxy server failed: {:?}", e);
+            }
+        });
+    }
 
     let rpc = ForgeRpc {
         registry: registry.clone(),
         db,
         supervisor: supervisor.clone(),
         mcp_manager: mcp_manager.clone(),
+        config: config.clone(),
     };
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 9090));
+    let rpc_port = config.daemon.rpc_port;
+    let addr = SocketAddr::from(([127, 0, 0, 1], rpc_port));
     let server = Server::builder().build(addr).await?;
     let handle = server.start(rpc.into_rpc());
 

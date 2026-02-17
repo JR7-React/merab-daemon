@@ -25,6 +25,12 @@ pub struct TuiApp {
     splash_start: Instant,
 }
 
+impl Default for TuiApp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TuiApp {
     pub fn new() -> Self {
         Self {
@@ -57,17 +63,17 @@ where
     let tick_rate = Duration::from_millis(500);
     
     loop {
-        if !app.show_splash {
-            if let Ok(new_status) = tick_fn().await {
-                app.update_status(new_status);
-            }
+        if !app.show_splash
+            && let Ok(new_status) = tick_fn().await
+        {
+            app.update_status(new_status);
         }
 
         if app.show_splash {
             if app.splash_start.elapsed() >= SPLASH_DURATION {
                 app.show_splash = false;
             } else {
-                terminal.draw(|f| splash_ui(f))?;
+                terminal.draw(splash_ui)?;
             }
         }
 
@@ -75,15 +81,15 @@ where
             terminal.draw(|f| ui(f, &app))?;
         }
         
-        if event::poll(tick_rate)? {
-            if let Event::Key(key) = event::read()? {
-                if app.show_splash {
-                    app.show_splash = false;
-                    continue;
-                }
-                if let KeyCode::Char('q') = key.code {
-                    break;
-                }
+        if event::poll(tick_rate)?
+            && let Event::Key(key) = event::read()?
+        {
+            if app.show_splash {
+                app.show_splash = false;
+                continue;
+            }
+            if let KeyCode::Char('q') = key.code {
+                break;
             }
         }
         

@@ -1,0 +1,127 @@
+use reqwest::Client as HttpClient;
+use tracing;
+
+use crate::error::AiError;
+use crate::types::{
+    AiClientConfig, AiResponse, ChatCompletionRequest, ChatCompletionResponse,
+    ChatMessage, ToolCall,
+};
+
+/// Client that communicates with the LLM via the local proxy.
+pub struct AiClient {
+    http: HttpClient,
+    config: AiClientConfig,
+    system_prompt: Option<String>,
+}
+
+impl AiClient {
+    /// Create a new AI client from config.
+    pub fn new(config: AiClientConfig) -> Self {
+        let system_prompt = config.system_prompt.clone();
+        Self {
+            http: HttpClient::new(),
+            config,
+            system_prompt,
+        }
+    }
+
+    /// Override the system prompt (e.g. to inject available tools).
+    pub fn set_system_prompt(&mut self, prompt: String) {
+        self.system_prompt = Some(prompt);
+    }
+
+    /// Send a chat request with full message history.
+    pub async fn chat(&self, messages: Vec<ChatMessage>) -> Result<AiResponse, AiError> {
+        let mut all_messages = Vec::new();
+
+        if let Some(sys) = &self.system_prompt {
+            all_messages.push(ChatMessage::system(sys.clone()));
+        }
+        all_messages.extend(messages);
+
+        let request = ChatCompletionRequest {
+            model: self.config.model.clone(),
+            messages: all_messages,
+            max_tokens: self.config.max_tokens,
+            temperature: self.config.temperature,
+        };
+
+        let url = format!(
+            "{}/v1/chat/completions",
+            self.config.proxy_url.trim_end_matches('/')
+        );
+
+        tracing::debug!(url = %url, model = %request.model, "sending chat request");
+
+        let resp = self
+            .http
+            .post(&url)
+            .json(&request)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(AiError::InvalidResponse(format!(
+                "HTTP {}: {}",
+                status, body
+            )));
+        }
+
+        let completion: ChatCompletionResponse = resp.json().await?;
+        self.parse_response(completion)
+    }
+
+    /// One-shot question (convenience wrapper).
+    pub async fn ask(&self, question: &str) -> Result<AiResponse, AiError> {
+        self.chat(vec![ChatMessage::user(question)]).await
+    }
+
+    /// Parse the LLM response, extracting tool calls if present.
+    fn parse_response(&self, resp: ChatCompletionResponse) -> Result<AiResponse, AiError> {
+        let choice = resp.choices.first().ok_or(AiError::EmptyResponse)?;
+        let content = choice
+            .message
+            .content
+            .clone()
+            .unwrap_or_default();
+
+        // Try to detect a tool_call JSON block in the content
+        let tool_call = Self::extract_tool_call(&content);
+
+        Ok(AiResponse {
+            content,
+            model: resp.model,
+            tool_call,
+        })
+    }
+
+    /// Attempt to extract a `{"tool_call": {"name": "...", "arguments": {...}}}` from content.
+    fn extract_tool_call(content: &str) -> Option<ToolCall> {
+        // Try parsing the entire content as JSON with a tool_call field
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(content) {
+            if let Some(tc) = val.get("tool_call") {
+                if let Ok(tool_call) = serde_json::from_value::<ToolCall>(tc.clone()) {
+                    return Some(tool_call);
+                }
+            }
+        }
+
+        // Try finding a JSON block within the content
+        if let Some(start) = content.find("{\"tool_call\"") {
+            if let Some(end) = content[start..].rfind('}') {
+                let json_str = &content[start..start + end + 1];
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
+                    if let Some(tc) = val.get("tool_call") {
+                        if let Ok(tool_call) = serde_json::from_value::<ToolCall>(tc.clone()) {
+                            return Some(tool_call);
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+}

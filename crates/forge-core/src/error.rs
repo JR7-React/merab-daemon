@@ -39,6 +39,9 @@ pub enum ForgeError {
     #[error("transport error: {0}")]
     Transport(String),
 
+    #[error("AI error: {0}")]
+    AiError(String),
+
     #[error("internal error: {0}")]
     Internal(String),
 
@@ -61,6 +64,7 @@ impl ForgeError {
             ForgeError::TaskFailed(_) => -32009,
             ForgeError::Store(_) => -32010,
             ForgeError::Transport(_) => -32011,
+            ForgeError::AiError(_) => -32012,
             ForgeError::Internal(_) => -32603, // Internal error
             ForgeError::Other(_) => -32000,    // Generic
         }

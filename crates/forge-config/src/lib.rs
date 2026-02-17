@@ -7,6 +7,7 @@ pub struct ForgeConfig {
     pub daemon: DaemonConfig,
     pub proxy: ProxyConfig,
     pub sandbox: SandboxConfig,
+    pub ai: AiConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -31,6 +32,14 @@ pub struct SandboxConfig {
     pub enabled: bool,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct AiConfig {
+    pub model: String,
+    pub system_prompt: String,
+    pub max_tokens: u32,
+    pub temperature: f32,
+}
+
 impl Default for ForgeConfig {
     fn default() -> Self {
         Self {
@@ -49,6 +58,12 @@ impl Default for ForgeConfig {
             sandbox: SandboxConfig {
                 memory_limit_mb: 512,
                 enabled: true,
+            },
+            ai: AiConfig {
+                model: "openai/gpt-3.5-turbo".to_string(),
+                system_prompt: "You are Forge AI, a helpful assistant that can orchestrate tools and agents.".to_string(),
+                max_tokens: 1024,
+                temperature: 0.7,
             },
         }
     }
@@ -69,7 +84,11 @@ impl ForgeConfig {
             .set_default("proxy.port", defaults.proxy.port as i64)?
             .set_default("proxy.upstream_url", defaults.proxy.upstream_url)?
             .set_default("sandbox.memory_limit_mb", defaults.sandbox.memory_limit_mb as i64)?
-            .set_default("sandbox.enabled", defaults.sandbox.enabled)?;
+            .set_default("sandbox.enabled", defaults.sandbox.enabled)?
+            .set_default("ai.model", defaults.ai.model)?
+            .set_default("ai.system_prompt", defaults.ai.system_prompt)?
+            .set_default("ai.max_tokens", defaults.ai.max_tokens as i64)?
+            .set_default("ai.temperature", defaults.ai.temperature as f64)?;
 
         // 2. Load from config file (if exists)
         if let Some(config_dir) = dirs::config_dir() {

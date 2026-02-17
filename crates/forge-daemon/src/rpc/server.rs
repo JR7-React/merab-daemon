@@ -125,7 +125,7 @@ pub struct ForgeRpc {
     pub start_time: Instant,
 }
 
-fn to_rpc_error(e: ForgeError) -> ErrorObjectOwned {
+pub(crate) fn to_rpc_error(e: ForgeError) -> ErrorObjectOwned {
     ErrorObjectOwned::owned(e.code(), e.to_string(), None::<()>)
 }
 

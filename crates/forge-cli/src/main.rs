@@ -76,6 +76,21 @@ enum Commands {
         /// Message ID (UUID)
         message_id: String,
     },
+    /// List tools exposed by an MCP agent
+    Tools {
+        /// Agent ID (UUID)
+        agent_id: String,
+    },
+    /// Call a tool on an MCP agent
+    Call {
+        /// Agent ID (UUID)
+        agent_id: String,
+        /// Tool name
+        tool_name: String,
+        /// Arguments as JSON string (e.g. '{"key":"value"}')
+        #[arg(default_value = "{}")]
+        arguments: String,
+    },
 }
 
 #[tokio::main]
@@ -156,6 +171,29 @@ async fn main() -> Result<()> {
         Commands::Ack { message_id } => {
             client.ack_message(&message_id).await?;
             println!("Message {message_id} acknowledged.");
+        }
+        Commands::Tools { agent_id } => {
+            let tools = client.list_tools(&agent_id).await?;
+            if tools.is_empty() {
+                println!("No tools available.");
+            } else {
+                println!("{:<30} {}", "TOOL", "DESCRIPTION");
+                println!("{}", "-".repeat(70));
+                for t in tools {
+                    let name = t.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+                    let desc = t.get("description").and_then(|v| v.as_str()).unwrap_or("");
+                    println!("{:<30} {}", name, desc);
+                }
+            }
+        }
+        Commands::Call {
+            agent_id,
+            tool_name,
+            arguments,
+        } => {
+            let args: serde_json::Value = serde_json::from_str(&arguments)?;
+            let result = client.call_tool(&agent_id, &tool_name, args).await?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
         }
     }
 

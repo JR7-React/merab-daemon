@@ -9,6 +9,7 @@ use tracing_subscriber::EnvFilter;
 
 use forge_core::AgentStatus;
 use forge_daemon::handlers::{ForgeApiServer, ForgeRpc};
+use forge_daemon::mcp_manager::McpManager;
 use forge_daemon::process::is_process_alive;
 use forge_daemon::registry::AgentRegistry;
 use forge_daemon::supervisor::ProcessSupervisor;
@@ -37,11 +38,13 @@ async fn main() -> Result<()> {
 
     let db = Arc::new(Mutex::new(db));
     let supervisor = Arc::new(ProcessSupervisor::new(registry.clone(), db.clone()));
+    let mcp_manager = Arc::new(McpManager::new());
 
     let rpc = ForgeRpc {
         registry: registry.clone(),
         db,
         supervisor: supervisor.clone(),
+        mcp_manager: mcp_manager.clone(),
     };
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 9090));
@@ -60,7 +63,8 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Graceful shutdown: stop all supervised agents
+    // Graceful shutdown: stop all MCP clients and supervised agents
+    mcp_manager.shutdown_all().await;
     supervisor.shutdown_all().await;
     tracing::info!("all agents shut down, exiting");
 
@@ -88,7 +92,6 @@ fn reconcile_stale_agents(db: &Database, registry: &AgentRegistry) {
                 "stale agent detected, marking as failed"
             );
             let _ = db.update_agent_exit(record.id, AgentStatus::Failed, None);
-            // Update in-memory registry (sync at startup, before tokio runtime is busy)
             if let Ok(mut agents) = registry.agents_mut() {
                 if let Some(r) = agents.get_mut(&record.id) {
                     r.status = AgentStatus::Failed;

@@ -92,4 +92,26 @@ impl ForgeClient {
         let result: bool = self.client.request("forge.ackMessage", params).await?;
         Ok(result)
     }
+
+    pub async fn list_tools(&self, agent_id: &str) -> Result<Vec<serde_json::Value>> {
+        let mut params = ObjectParams::new();
+        params.insert("agent_id", agent_id)?;
+        let result: Vec<serde_json::Value> =
+            self.client.request("forge.listTools", params).await?;
+        Ok(result)
+    }
+
+    pub async fn call_tool(
+        &self,
+        agent_id: &str,
+        tool_name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        let mut params = ObjectParams::new();
+        params.insert("agent_id", agent_id)?;
+        params.insert("tool_name", tool_name)?;
+        params.insert("arguments", &arguments)?;
+        let result: serde_json::Value = self.client.request("forge.callTool", params).await?;
+        Ok(result)
+    }
 }

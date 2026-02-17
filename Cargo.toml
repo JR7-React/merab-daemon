@@ -23,3 +23,4 @@ anyhow = "1"
 toml = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 jsonrpsee = { version = "0.24", features = ["server", "client", "macros", "http-client"] }
+rmcp = { version = "0.15", features = ["client", "transport-child-process"] }

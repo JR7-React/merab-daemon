@@ -1,13 +1,15 @@
 use std::sync::Arc;
 
-use forge_core::{AgentManifest, AgentRecord, AgentStatus, AgentSummary, Message};
+use forge_core::{AgentManifest, AgentRecord, AgentStatus, AgentSummary, Message, ProtocolKind};
 use forge_store::Database;
+use forge_transport::mcp::McpToolInfo;
 use jsonrpsee::core::async_trait;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::ErrorObjectOwned;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+use crate::mcp_manager::McpManager;
 use crate::registry::AgentRegistry;
 use crate::supervisor::ProcessSupervisor;
 
@@ -57,12 +59,24 @@ pub trait ForgeApi {
 
     #[method(name = "forge.ackMessage")]
     async fn ack_message(&self, message_id: String) -> Result<bool, ErrorObjectOwned>;
+
+    #[method(name = "forge.listTools")]
+    async fn list_tools(&self, agent_id: String) -> Result<Vec<McpToolInfo>, ErrorObjectOwned>;
+
+    #[method(name = "forge.callTool")]
+    async fn call_tool(
+        &self,
+        agent_id: String,
+        tool_name: String,
+        arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, ErrorObjectOwned>;
 }
 
 pub struct ForgeRpc {
     pub registry: Arc<AgentRegistry>,
     pub db: Arc<Mutex<Database>>,
     pub supervisor: Arc<ProcessSupervisor>,
+    pub mcp_manager: Arc<McpManager>,
 }
 
 fn to_rpc_error(e: impl std::fmt::Display) -> ErrorObjectOwned {
@@ -84,12 +98,10 @@ impl ForgeApiServer for ForgeRpc {
         manifest: AgentManifest,
     ) -> Result<AgentRecord, ErrorObjectOwned> {
         let record = AgentRecord::new(manifest);
-        // Persist to DB
         {
             let db = self.db.lock().await;
             db.insert_agent(&record).map_err(to_rpc_error)?;
         }
-        // Register in memory
         self.registry.register(record.clone()).await.map_err(to_rpc_error)?;
         tracing::info!(id = %record.id, name = %record.manifest.name, "agent registered");
         Ok(record)
@@ -113,36 +125,67 @@ impl ForgeApiServer for ForgeRpc {
         }
 
         let manifest = &record.manifest;
+        let is_mcp = manifest.protocol == ProtocolKind::Mcp;
+
         let mut cmd = tokio::process::Command::new(&manifest.command);
         cmd.args(&manifest.args);
         if let Some(dir) = &manifest.working_dir {
             cmd.current_dir(dir);
         }
-        cmd.stdout(std::process::Stdio::null());
-        cmd.stderr(std::process::Stdio::null());
 
-        let child = cmd.spawn().map_err(|e| {
-            to_rpc_error(format!("failed to start agent process: {e}"))
-        })?;
+        if is_mcp {
+            // MCP agents need piped stdin/stdout for JSON-RPC communication
+            cmd.stdin(std::process::Stdio::piped());
+            cmd.stdout(std::process::Stdio::piped());
+            cmd.stderr(std::process::Stdio::null());
 
-        let pid = child.id();
-        self.registry
-            .update_status(uuid, AgentStatus::Running, pid)
-            .await
-            .map_err(to_rpc_error)?;
+            // Connect MCP client (this spawns the process and does the handshake)
+            let mcp_client =
+                forge_transport::mcp::McpClient::connect(uuid, cmd)
+                    .await
+                    .map_err(|e| to_rpc_error(format!("MCP handshake failed: {e}")))?;
 
-        // Persist status
-        {
-            let db = self.db.lock().await;
-            let _ = db.update_agent_status(uuid, AgentStatus::Running, pid);
+            // We don't get the child directly from rmcp, so pid is unknown
+            self.registry
+                .update_status(uuid, AgentStatus::Running, None)
+                .await
+                .map_err(to_rpc_error)?;
+
+            {
+                let db = self.db.lock().await;
+                let _ = db.update_agent_status(uuid, AgentStatus::Running, None);
+            }
+
+            self.mcp_manager.add_client(uuid, mcp_client).await;
+
+            tracing::info!(id = %uuid, "MCP agent started");
+        } else {
+            // Non-MCP agents: null stdio, spawn and hand to supervisor
+            cmd.stdout(std::process::Stdio::null());
+            cmd.stderr(std::process::Stdio::null());
+
+            let child = cmd.spawn().map_err(|e| {
+                to_rpc_error(format!("failed to start agent process: {e}"))
+            })?;
+
+            let pid = child.id();
+            self.registry
+                .update_status(uuid, AgentStatus::Running, pid)
+                .await
+                .map_err(to_rpc_error)?;
+
+            {
+                let db = self.db.lock().await;
+                let _ = db.update_agent_status(uuid, AgentStatus::Running, pid);
+            }
+
+            self.supervisor
+                .start_monitoring(uuid, child, record.manifest.clone())
+                .await;
+
+            tracing::info!(id = %uuid, pid = ?pid, "agent started");
         }
 
-        // Hand off child to supervisor for monitoring
-        self.supervisor
-            .start_monitoring(uuid, child, record.manifest.clone())
-            .await;
-
-        tracing::info!(id = %uuid, pid = ?pid, "agent started");
         self.registry.get(uuid).await.map_err(to_rpc_error)
     }
 
@@ -154,11 +197,18 @@ impl ForgeApiServer for ForgeRpc {
             return Err(to_rpc_error(format!("agent not running: {uuid}")));
         }
 
-        // Delegate to supervisor (kills child + waits)
+        let is_mcp = record.manifest.protocol == ProtocolKind::Mcp;
+
+        if is_mcp {
+            // Graceful MCP shutdown
+            self.mcp_manager.remove_client(uuid).await;
+        }
+
+        // Delegate to supervisor (kills child + waits) for non-MCP
         let stopped = self.supervisor.stop_agent(uuid).await;
 
-        if !stopped {
-            // Fallback: agent not in supervisor (shouldn't happen, but be safe)
+        if !is_mcp && !stopped {
+            // Fallback: agent not in supervisor
             if let Some(pid) = record.pid {
                 #[cfg(unix)]
                 {
@@ -181,7 +231,6 @@ impl ForgeApiServer for ForgeRpc {
             .await
             .map_err(to_rpc_error)?;
 
-        // Persist status
         {
             let db = self.db.lock().await;
             let _ = db.update_agent_status(uuid, AgentStatus::Stopped, None);
@@ -200,9 +249,11 @@ impl ForgeApiServer for ForgeRpc {
             self.stop_agent(id).await?;
         }
 
+        // Clean up MCP client if any
+        self.mcp_manager.remove_client(uuid).await;
+
         self.registry.remove(uuid).await.map_err(to_rpc_error)?;
 
-        // Remove from DB (messages first, then agent)
         {
             let db = self.db.lock().await;
             db.delete_agent_messages(uuid).map_err(to_rpc_error)?;
@@ -222,7 +273,6 @@ impl ForgeApiServer for ForgeRpc {
         let from_id = parse_id(&from)?;
         let to_id = parse_id(&to)?;
 
-        // Verify both agents exist
         self.registry.get(from_id).await.map_err(to_rpc_error)?;
         self.registry.get(to_id).await.map_err(to_rpc_error)?;
 
@@ -242,7 +292,6 @@ impl ForgeApiServer for ForgeRpc {
     ) -> Result<Message, ErrorObjectOwned> {
         let from_id = parse_id(&from)?;
 
-        // Verify sender exists
         self.registry.get(from_id).await.map_err(to_rpc_error)?;
 
         let msg = Message::new(from_id, None, content);
@@ -270,5 +319,57 @@ impl ForgeApiServer for ForgeRpc {
         }
         tracing::info!(id = %uuid, "message acknowledged");
         Ok(true)
+    }
+
+    async fn list_tools(&self, agent_id: String) -> Result<Vec<McpToolInfo>, ErrorObjectOwned> {
+        let uuid = parse_id(&agent_id)?;
+        let record = self.registry.get(uuid).await.map_err(to_rpc_error)?;
+
+        if record.manifest.protocol != ProtocolKind::Mcp {
+            return Err(to_rpc_error(format!("agent {uuid} is not an MCP agent")));
+        }
+        if record.status != AgentStatus::Running {
+            return Err(to_rpc_error(format!("agent {uuid} is not running")));
+        }
+
+        let client = self.mcp_manager.get_client(uuid).await.ok_or_else(|| {
+            to_rpc_error(format!("no MCP client found for agent {uuid}"))
+        })?;
+
+        client.list_tools().await.map_err(to_rpc_error)
+    }
+
+    async fn call_tool(
+        &self,
+        agent_id: String,
+        tool_name: String,
+        arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, ErrorObjectOwned> {
+        let uuid = parse_id(&agent_id)?;
+        let record = self.registry.get(uuid).await.map_err(to_rpc_error)?;
+
+        if record.manifest.protocol != ProtocolKind::Mcp {
+            return Err(to_rpc_error(format!("agent {uuid} is not an MCP agent")));
+        }
+        if record.status != AgentStatus::Running {
+            return Err(to_rpc_error(format!("agent {uuid} is not running")));
+        }
+
+        let client = self.mcp_manager.get_client(uuid).await.ok_or_else(|| {
+            to_rpc_error(format!("no MCP client found for agent {uuid}"))
+        })?;
+
+        let args = match arguments {
+            serde_json::Value::Object(map) => Some(map),
+            serde_json::Value::Null => None,
+            _ => return Err(to_rpc_error("arguments must be a JSON object or null")),
+        };
+
+        let result = client
+            .call_tool(tool_name, args)
+            .await
+            .map_err(to_rpc_error)?;
+
+        serde_json::to_value(&result).map_err(to_rpc_error)
     }
 }

@@ -108,7 +108,6 @@ pub struct ForgeRpc {
     pub mcp_manager: Arc<McpManager>,
 }
 
-
 fn to_rpc_error(e: impl std::fmt::Display) -> ErrorObjectOwned {
     ErrorObjectOwned::owned(-32000, e.to_string(), None::<()>)
 }
@@ -145,43 +144,7 @@ impl ForgeApiServer for ForgeRpc {
         let uuid = parse_id(&id)?;
         self.registry.get(uuid).await.map_err(to_rpc_error)
     }
-    
-    // ... startAgent, stopAgent, unregisterAgent, send, broadcast, getMessages, ack, listTools, callTool are same ...
-    // I need to include them to keep the file valid, but 'replace' tool works with exact matching.
-    // Since I'm replacing the trait definition and adding imports, I should check if I can just replace the trait and impl block beginning/end or if I need to provide full content.
-    // The previous read showed full content. I'll just append the new methods to the impl block if I can match a large chunk, or better, I will assume the previous 'read_file' output is accurate and I can just replace the whole file content to be safe and ensure all methods are present.
-    // Actually, 'replace' tool is best for surgical changes. I'll replace the trait definition and then append the new methods to the impl block.
-    // But adding methods to the trait requires changing the trait definition block.
-    // And adding methods to the impl requires changing the impl block.
-    // I'll do two replacements or one big one. Since the file is < 400 lines, I'll rewrite the imports and trait, and then I'll use a second call to add the impl methods? No, tool allows only one replace per call unless expected_replacements is used.
-    // I'll rewrite the whole file with the new content, filling in the missing parts from my memory of the read file.
-    
-    // Wait, rewriting the whole file is risky if I miss something.
-    // I'll use 'replace' to update the imports and trait first.
-    // Then another 'replace' to add the impl methods.
-    
-    // Imports and Trait:
-    // ...
-    
-    // Actually, I can just replace the whole file content since I have it from 'read_file'. I just need to be careful to copy everything correctly.
-    // Let's try to be smart. I'll replace imports first.
-    
-    // Then I'll replace the end of the trait.
-    
-    // Then I'll replace the end of the impl.
-    
-    // Let's do it in chunks.
-    
-    // Chunk 1: Imports.
-    // Chunk 2: Trait definition (add new methods).
-    // Chunk 3: Impl definition (add new methods).
-    
-    // I will try to do it in one go if I can match the context.
-    
-    // Actually, I'll just write the whole file content. I have the output of `read_file` just above. I will copy-paste the existing code and add the new parts.
-    
-    // ... (copying existing code) ...
-    
+
     async fn start_agent(&self, id: String) -> Result<AgentRecord, ErrorObjectOwned> {
         let uuid = parse_id(&id)?;
         let record = self.registry.get(uuid).await.map_err(to_rpc_error)?;
@@ -200,6 +163,7 @@ impl ForgeApiServer for ForgeRpc {
         }
 
         if is_mcp {
+            // MCP agents need piped stdin/stdout for JSON-RPC communication
             cmd.stdin(std::process::Stdio::piped());
             cmd.stdout(std::process::Stdio::piped());
             cmd.stderr(std::process::Stdio::null());
@@ -226,11 +190,28 @@ impl ForgeApiServer for ForgeRpc {
             cmd.stdout(std::process::Stdio::null());
             cmd.stderr(std::process::Stdio::null());
 
+            // Create Job Object (Sandbox)
+            let job_object = match forge_sandbox::JobObject::new() {
+                Ok(job) => Some(job),
+                Err(e) => {
+                    tracing::warn!(id = %uuid, error = %e, "failed to create job object for agent");
+                    None
+                }
+            };
+
             let child = cmd.spawn().map_err(|e| {
                 to_rpc_error(format!("failed to start agent process: {e}"))
             })?;
 
             let pid = child.id();
+            
+            // Assign to Job Object if created
+            if let (Some(pid), Some(job)) = (pid, &job_object) {
+                if let Err(e) = job.assign_process(pid) {
+                    tracing::warn!(id = %uuid, error = %e, "failed to assign process to job object");
+                }
+            }
+
             self.registry
                 .update_status(uuid, AgentStatus::Running, pid)
                 .await
@@ -242,7 +223,7 @@ impl ForgeApiServer for ForgeRpc {
             }
 
             self.supervisor
-                .start_monitoring(uuid, child, record.manifest.clone())
+                .start_monitoring(uuid, child, record.manifest.clone(), job_object)
                 .await;
 
             tracing::info!(id = %uuid, pid = ?pid, "agent started");
@@ -472,4 +453,3 @@ impl ForgeApiServer for ForgeRpc {
         db.list_memory_keys(prefix.as_deref()).map_err(to_rpc_error)
     }
 }
-

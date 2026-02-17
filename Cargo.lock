@@ -467,6 +467,7 @@ dependencies = [
  "chrono",
  "dotenv",
  "forge-core",
+ "forge-sandbox",
  "forge-store",
  "forge-transport",
  "hex",
@@ -492,7 +493,10 @@ dependencies = [
 name = "forge-sandbox"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "forge-core",
+ "tracing",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

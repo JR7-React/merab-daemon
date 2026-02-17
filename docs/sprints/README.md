@@ -13,12 +13,13 @@ Documentación detallada de cada sprint para continuidad del desarrollo.
 | 2.4 | A2A Protocol — HTTP server, discovery, task execution | pendiente | [sprint-2.4](sprint-2.4-a2a-protocol.md) |
 | 2.5 | Context Proxy — cache de tokens para LLMs | pendiente | [sprint-2.5](sprint-2.5-context-proxy.md) |
 | 2.6 | Shared Memory — key-value store persistente | pendiente | [sprint-2.6](sprint-2.6-shared-memory.md) |
+| 2.7 | Sandboxing Real — Windows Job Objects | pendiente | [sprint-2.7](sprint-2.7-sandboxing.md) |
 
 ## Sprints pendientes
 
 | Sprint | Descripción | Prioridad |
 |---|---|---|
-| 2.7 | Sandboxing Real — Windows Job Objects | Baja |
+| 3.0 | TBD - Security & Auth | Alta |
 
 ## Build rápido
 

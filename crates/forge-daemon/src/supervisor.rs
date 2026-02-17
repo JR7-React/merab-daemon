@@ -3,6 +3,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use forge_core::{AgentId, AgentManifest, AgentStatus};
+use forge_sandbox::JobObject;
 use forge_store::Database;
 use tokio::process::Child;
 use tokio::sync::Mutex;
@@ -13,6 +14,7 @@ use crate::registry::AgentRegistry;
 struct ProcessHandle {
     monitor_handle: JoinHandle<()>,
     shutdown_tx: tokio::sync::oneshot::Sender<()>,
+    _job_object: Option<JobObject>,
 }
 
 pub struct ProcessSupervisor {
@@ -37,6 +39,7 @@ impl ProcessSupervisor {
         agent_id: AgentId,
         child: Child,
         manifest: AgentManifest,
+        job_object: Option<JobObject>,
     ) {
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 
@@ -54,10 +57,13 @@ impl ProcessSupervisor {
             ProcessHandle {
                 monitor_handle,
                 shutdown_tx,
+                _job_object: job_object,
             },
         );
     }
-
+    
+    // ... stop_agent and shutdown_all remain similar but adapt to new ProcessHandle ...
+    
     /// Stop a specific agent. Sends shutdown signal, waits for monitor to finish.
     pub async fn stop_agent(&self, agent_id: AgentId) -> bool {
         let handle = {
@@ -67,6 +73,7 @@ impl ProcessSupervisor {
 
         if let Some(ph) = handle {
             let _ = ph.shutdown_tx.send(());
+            // JobObject will be dropped here, ensuring kill-on-close if configured
             let _ = tokio::time::timeout(std::time::Duration::from_secs(5), ph.monitor_handle)
                 .await;
             true
@@ -100,58 +107,56 @@ async fn monitor_task(
     handles: Arc<Mutex<HashMap<AgentId, ProcessHandle>>>,
     manifest: AgentManifest,
 ) {
-    tokio::select! {
-        exit_result = child.wait() => {
-            let (status, exit_code) = match exit_result {
-                Ok(exit_status) => {
-                    let code = exit_status.code();
-                    if exit_status.success() {
-                        (AgentStatus::Stopped, code)
-                    } else {
-                        (AgentStatus::Failed, code)
-                    }
-                }
-                Err(e) => {
-                    tracing::error!(id = %agent_id, error = %e, "error waiting for agent process");
-                    (AgentStatus::Failed, None)
-                }
-            };
-
-            tracing::info!(id = %agent_id, ?status, ?exit_code, "agent process exited");
-
-            if let Err(e) = registry.update_status(agent_id, status, None).await {
-                tracing::error!(id = %agent_id, error = %e, "failed to update registry on exit");
-            }
-            registry.set_exit_info(agent_id, exit_code).await;
-
-            {
-                let db_lock = db.lock().await;
-                if let Err(e) = db_lock.update_agent_exit(agent_id, status, exit_code) {
-                    tracing::error!(id = %agent_id, error = %e, "failed to update DB on exit");
-                }
-            }
-
-            {
-                let mut map = handles.lock().await;
-                map.remove(&agent_id);
-            }
-
-            // Restart if configured (spawn as separate task to break async recursion)
-            if status == AgentStatus::Failed && manifest.restart_on_failure {
-                tracing::info!(id = %agent_id, "restarting agent due to restart_on_failure");
-                tokio::spawn(restart_agent(agent_id, manifest, registry, db, handles));
-            }
-        }
+    // Wait for exit or shutdown signal
+    let exit_status = tokio::select! {
+        res = child.wait() => res,
         _ = shutdown_rx => {
             tracing::info!(id = %agent_id, "shutdown signal received, killing agent");
             let _ = child.kill().await;
-            let _ = child.wait().await;
+            child.wait().await
         }
+    };
+
+    // Remove from handles map immediately to drop JobObject and clean up
+    {
+        let mut map = handles.lock().await;
+        map.remove(&agent_id);
+    }
+
+    let (status, exit_code) = match exit_status {
+        Ok(status) => {
+            let code = status.code();
+            if status.success() {
+                (AgentStatus::Stopped, code)
+            } else {
+                (AgentStatus::Failed, code)
+            }
+        }
+        Err(e) => {
+            tracing::error!(id = %agent_id, error = %e, "error waiting for agent process");
+            (AgentStatus::Failed, None)
+        }
+    };
+
+    tracing::info!(id = %agent_id, ?status, ?exit_code, "agent process exited");
+
+    if let Err(e) = registry.update_status(agent_id, status, None).await {
+        tracing::error!(id = %agent_id, error = %e, "failed to update registry on exit");
+    }
+    registry.set_exit_info(agent_id, exit_code).await;
+
+    {
+        let db_lock = db.lock().await;
+        let _ = db_lock.update_agent_exit(agent_id, status, exit_code);
+    }
+
+    // Restart if configured (spawn as separate task to break async recursion)
+    if status == AgentStatus::Failed && manifest.restart_on_failure {
+        tracing::info!(id = %agent_id, "restarting agent due to restart_on_failure");
+        tokio::spawn(restart_agent(agent_id, manifest, registry, db, handles));
     }
 }
 
-/// Restart an agent and set up new monitoring.
-/// Returns a Pin<Box<Future>> to break the async type cycle with monitor_task.
 fn restart_agent(
     agent_id: AgentId,
     manifest: AgentManifest,
@@ -170,9 +175,26 @@ fn restart_agent(
         cmd.stdout(std::process::Stdio::null());
         cmd.stderr(std::process::Stdio::null());
 
+        // Create new Job Object for the restarted process
+        let job_object = match JobObject::new() {
+            Ok(job) => Some(job),
+            Err(e) => {
+                tracing::warn!(id = %agent_id, error = %e, "failed to create job object for restart");
+                None
+            }
+        };
+
         match cmd.spawn() {
             Ok(child) => {
                 let pid = child.id();
+                
+                // Assign to Job Object
+                if let (Some(pid), Some(job)) = (pid, &job_object) {
+                     if let Err(e) = job.assign_process(pid) {
+                         tracing::warn!(id = %agent_id, error = %e, "failed to assign restarted process to job object");
+                     }
+                }
+
                 if let Err(e) = registry
                     .update_status(agent_id, AgentStatus::Running, pid)
                     .await
@@ -203,6 +225,7 @@ fn restart_agent(
                     ProcessHandle {
                         monitor_handle,
                         shutdown_tx,
+                        _job_object: job_object,
                     },
                 );
             }

@@ -38,7 +38,6 @@ def main():
                     }
                 }
             elif method == "notifications/initialized":
-                # Just notification, no response needed usually, but we keep loop alive
                 continue
             elif method == "tools/list":
                 response = {
@@ -62,7 +61,6 @@ def main():
                     }
                 }
             elif method == "tools/call":
-                # Mock result
                 response = {
                     "jsonrpc": "2.0",
                     "id": req_id,
@@ -82,7 +80,6 @@ def main():
                     "result": {}
                 }
             else:
-                # Fallback for unknown methods to avoid hanging
                 if req_id is not None:
                     response = {
                         "jsonrpc": "2.0",
@@ -94,8 +91,7 @@ def main():
                     }
 
             if response:
-                sys.stdout.write(json.dumps(response) + "
-")
+                sys.stdout.write(json.dumps(response) + "\n")
                 sys.stdout.flush()
                 
         except Exception as e:

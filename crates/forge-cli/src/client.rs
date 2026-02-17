@@ -179,5 +179,10 @@ impl ForgeClient {
         let result: Vec<String> = self.client.request("forge.memory.list", params).await?;
         Ok(result)
     }
+
+    pub async fn get_system_status(&self) -> Result<forge_core::SystemStatus> {
+        let result: forge_core::SystemStatus = self.client.request("forge.getSystemStatus", ObjectParams::new()).await?;
+        Ok(result)
+    }
 }
 

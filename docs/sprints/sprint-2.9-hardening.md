@@ -27,6 +27,7 @@ Elevar la calidad del código de "funcional" a "grado industrial", enfocándose 
 - **Solución**:
   - Definición robusta de `ForgeError` en `forge-core` con variantes semánticas (`ToolNotFound`, `RateLimit`, etc.).
   - Mapeo automático a códigos JSON-RPC estándar (`-32001`, etc.).
+  - **Nota Post-Implementación**: Se resolvió el problema de la "Orphan Rule" en `forge-daemon` utilizando una función helper `to_rpc_error()` en lugar de un `impl From<>` directo, asegurando la conformidad con las reglas de Rust.
 
 ### 4. Estándares de Ingeniería
 - Creación de `docs/RULES.md` definiendo límites de tamaño de archivo, estilo y prácticas de seguridad (no `unwrap()`).

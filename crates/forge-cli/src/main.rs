@@ -1,6 +1,7 @@
 mod client;
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -109,6 +110,8 @@ enum Commands {
     /// Shared Memory Operations
     #[command(subcommand)]
     Memory(MemoryCommands),
+    /// Monitor the system in real-time (TUI)
+    Monitor,
 }
 
 #[derive(Subcommand)]
@@ -247,11 +250,10 @@ async fn main() -> Result<()> {
             let response = client.a2a_send(&url, &skill, args).await?;
             println!("Task submitted. ID: {} (Status: {})", response.task_id, response.status);
             
-            // Poll for completion
             let mut status = response.status;
             while status != "completed" && status != "failed" && status != "cancelled" {
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                print!("."); // Progress indicator
+                print!(".");
                 use std::io::Write;
                 std::io::stdout().flush()?;
                 
@@ -298,8 +300,18 @@ async fn main() -> Result<()> {
                 }
             }
         },
+        Commands::Monitor => {
+            let app = forge_tui::TuiApp::new();
+            let client = Arc::new(client);
+            
+            forge_tui::run_tui(app, move || {
+                let client = client.clone();
+                async move {
+                    client.get_system_status().await
+                }
+            }).await?;
+        }
     }
 
     Ok(())
 }
-

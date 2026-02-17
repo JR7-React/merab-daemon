@@ -98,6 +98,7 @@ async fn main() -> Result<()> {
         supervisor: supervisor.clone(),
         mcp_manager: mcp_manager.clone(),
         config: config.clone(),
+        start_time: std::time::Instant::now(),
     };
 
     let rpc_port = config.daemon.rpc_port;

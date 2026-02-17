@@ -96,6 +96,17 @@ impl ProcessSupervisor {
                 .await;
         }
     }
+
+    /// Get real-time memory usage for a specific agent.
+    pub async fn get_agent_memory(&self, agent_id: AgentId) -> Option<usize> {
+        let map = self.handles.lock().await;
+        if let Some(ph) = map.get(&agent_id) {
+            if let Some(job) = &ph._job_object {
+                return job.get_memory_usage().ok();
+            }
+        }
+        None
+    }
 }
 
 async fn monitor_task(

@@ -16,6 +16,7 @@ Documentación detallada de cada sprint para continuidad del desarrollo.
 | 2.7 | Sandboxing Real — Windows Job Objects | pendiente | [sprint-2.7](sprint-2.7-sandboxing.md) |
 | 2.8 | Polish & Stability — RAM limits, CLI polling, cleanup | pendiente | [sprint-2.8](sprint-2.8-polish.md) |
 | 2.9 | Hardening — Config, Indexing, Error Handling | pendiente | [sprint-2.9](sprint-2.9-hardening.md) |
+| 2.10 | TUI Dashboard — Real-time observability | pendiente | [sprint-2.10](sprint-2.10-tui.md) |
 
 ## Sprints pendientes
 

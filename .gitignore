@@ -3,3 +3,9 @@
 *.db-journal
 .env
 forge.toml
+
+# Temp/debug files
+*.log
+ask_output.txt
+debug_forge.ps1
+start_error.log

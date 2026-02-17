@@ -19,4 +19,7 @@ pub enum AiError {
 
     #[error("tool call failed: {0}")]
     ToolCallFailed(String),
+
+    #[error("orchestration exceeded max steps ({0})")]
+    MaxStepsExceeded(u32),
 }

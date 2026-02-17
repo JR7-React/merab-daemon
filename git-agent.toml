@@ -1,0 +1,6 @@
+name = "forge-git"
+description = "Agent for git operations"
+command = "target/debug/forge-git.exe"
+version = "0.1.0"
+protocol = "mcp"
+env = {}

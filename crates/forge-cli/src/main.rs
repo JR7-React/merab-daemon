@@ -1,8 +1,6 @@
+mod bootstrap;
 mod client;
 mod chat_ui;
-
-
-
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -22,7 +20,7 @@ struct Cli {
     url: String,
 
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
@@ -151,7 +149,13 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let client = ForgeClient::new(&cli.url)?;
 
-    match cli.command {
+    // No subcommand = enter chat (auto-bootstrap daemon + agents)
+    let command = match cli.command {
+        Some(cmd) => cmd,
+        None => Commands::Chat,
+    };
+
+    match command {
         Commands::Ping => {
             let result = client.ping().await?;
             println!("{result}");
@@ -168,6 +172,7 @@ async fn main() -> Result<()> {
         Commands::List => {
             let agents = client.list_agents().await?;
             if agents.is_empty() {
+
                 println!("No agents registered.");
             } else {
                 println!(
@@ -337,18 +342,19 @@ async fn main() -> Result<()> {
             .await?;
         }
         Commands::Chat => {
-            chat_ui::start_chat_session(&client).await?;
+            let ready_client = bootstrap::ensure_ready(&cli.url).await?;
+            chat_ui::start_chat_session(&ready_client).await?;
         }
 
-        Commands::Ask { question } => match client.ai_orchestrate(&question).await {
-            Ok(resp) => {
-                println!("{}", resp.content);
-                if let Some(tool) = resp.tool_call {
-                    println!("\n[Orchestrated Tool Call: {}]", tool.name);
+        Commands::Ask { question } => {
+            let ready_client = bootstrap::ensure_ready(&cli.url).await?;
+            match ready_client.ai_orchestrate(&question).await {
+                Ok(resp) => {
+                    println!("{}", resp.content);
                 }
+                Err(e) => eprintln!("Error: {}", e),
             }
-            Err(e) => eprintln!("Error: {}", e),
-        },
+        }
     }
 
     Ok(())

@@ -13,7 +13,6 @@ use forge_transport::mcp::McpToolInfo;
 use jsonrpsee::core::async_trait;
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::ErrorObjectOwned;
-use serde_json::Value;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -128,6 +127,13 @@ pub trait ForgeApi {
 
     #[method(name = "forge.ai.orchestrate")]
     async fn ai_orchestrate(&self, task: String) -> Result<AiResponse, ErrorObjectOwned>;
+
+    #[method(name = "forge.ai.executeTool")]
+    async fn ai_execute_tool(
+        &self,
+        tool_name: String,
+        arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, ErrorObjectOwned>;
 }
 
 pub struct ForgeRpc {
@@ -561,5 +567,13 @@ impl ForgeApiServer for ForgeRpc {
 
     async fn ai_orchestrate(&self, task: String) -> Result<AiResponse, ErrorObjectOwned> {
         ai_methods::handle_ai_orchestrate(&self.config, &self.mcp_manager, task).await
+    }
+
+    async fn ai_execute_tool(
+        &self,
+        tool_name: String,
+        arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, ErrorObjectOwned> {
+        ai_methods::handle_execute_tool(&self.mcp_manager, tool_name, arguments).await
     }
 }

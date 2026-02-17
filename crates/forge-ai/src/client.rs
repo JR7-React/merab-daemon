@@ -113,6 +113,46 @@ impl AiClient {
             }
         }
 
+        // 1. Try to find a markdown code block with JSON
+        if let Some(start) = content.find("```json") {
+            if let Some(_end) = content[start..].find("```") {
+                // Find the SECOND backtick set (closing)
+                 if let Some(close) = content[start+7..].find("```") {
+                     let json_str = &content[start+7..start+7+close].trim();
+                      if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
+                        if let Some(tc) = val.get("tool_call") {
+                            if let Ok(tool_call) = serde_json::from_value::<ToolCall>(tc.clone()) {
+                                return Some(tool_call);
+                            }
+                        }
+                    }
+                 }
+            }
+        }
+
+        // 2. Try parsing the entire content as JSON
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(content) {
+            if let Some(tc) = val.get("tool_call") {
+                if let Ok(tool_call) = serde_json::from_value::<ToolCall>(tc.clone()) {
+                    return Some(tool_call);
+                }
+            }
+        }
+
+        // 3. Try finding a raw JSON block within the content (fallback)
+        if let Some(start) = content.find("{\"tool_call\"") {
+            if let Some(end) = content[start..].rfind('}') {
+                let json_str = &content[start..start + end + 1];
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
+                    if let Some(tc) = val.get("tool_call") {
+                        if let Ok(tool_call) = serde_json::from_value::<ToolCall>(tc.clone()) {
+                            return Some(tool_call);
+                        }
+                    }
+                }
+            }
+        }
+
         None
     }
 }

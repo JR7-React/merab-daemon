@@ -1,4 +1,4 @@
-use std::io::{self, BufRead};
+use std::io::{self, BufRead, Write};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -64,6 +64,7 @@ fn handle_request(req: JsonRpcRequest) {
     if let Some(resp) = response {
         let resp_str = serde_json::to_string(&resp).unwrap();
         println!("{}", resp_str);
+        let _ = io::stdout().flush();
         tracing::debug!("Sent: {}", resp_str);
     }
 }

@@ -4,4 +4,6 @@ pub mod process;
 pub mod proxy;
 pub mod registry;
 pub mod rpc;
+pub mod prompts;
 pub mod supervisor;
+

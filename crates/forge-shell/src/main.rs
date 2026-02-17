@@ -1,4 +1,4 @@
-use std::io::{self, BufRead};
+use std::io::{self, BufRead, Write};
 use tokio::process::Command;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -72,6 +72,7 @@ async fn handle_request(req: JsonRpcRequest) {
     if let Some(resp) = response {
         let resp_str = serde_json::to_string(&resp).unwrap();
         println!("{}", resp_str);
+        let _ = io::stdout().flush();
         tracing::debug!("Sent: {}", resp_str);
     }
 }
@@ -144,18 +145,23 @@ async fn tool_execute(args: Option<&Value>) -> anyhow::Result<String> {
 
     tracing::info!("Executing: {} {:?} (cwd: {:?})", command_str, cmd_args, cwd);
 
-    let mut cmd = Command::new(command_str);
-    cmd.args(&cmd_args);
-    
-    if let Some(dir) = cwd {
-        cmd.current_dir(dir);
-    }
-
-    // Windows usually needs "cmd /c" or "powershell /c" for shell builtins, 
-    // but here we expect 'command' to be an executable in PATH.
-    // Pro-tip: users might try "dir" which isn't an exe.
-    
-    let output = cmd.output().await?;
+    // If args are empty and command contains spaces, run via system shell
+    // so the LLM can send full command strings like "cargo build --release"
+    let output = if cmd_args.is_empty() && command_str.contains(' ') {
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", command_str]);
+        if let Some(dir) = cwd {
+            cmd.current_dir(dir);
+        }
+        cmd.output().await?
+    } else {
+        let mut cmd = Command::new(command_str);
+        cmd.args(&cmd_args);
+        if let Some(dir) = cwd {
+            cmd.current_dir(dir);
+        }
+        cmd.output().await?
+    };
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);

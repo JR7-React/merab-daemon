@@ -70,6 +70,7 @@ fn handle_request(req: JsonRpcRequest, root_dir: &Path) {
     if let Some(resp) = response {
         let resp_str = serde_json::to_string(&resp).unwrap();
         println!("{}", resp_str);
+        let _ = io::stdout().flush();
         tracing::debug!("Sent: {}", resp_str);
     }
 }
@@ -188,7 +189,16 @@ fn tool_list(args: Option<&Value>, root: &Path) -> anyhow::Result<String> {
     output.push_str(&format!("Listing for {}:\n", path_str));
 
     if recursive {
-        for entry in WalkDir::new(&target_path).max_depth(5) {
+        // Skip hidden dirs (.git, .env, etc.) and node_modules, target/
+        let skip_dirs = [".git", "node_modules", "target", ".claude"];
+        for entry in WalkDir::new(&target_path)
+            .max_depth(3)
+            .into_iter()
+            .filter_entry(|e| {
+                let name = e.file_name().to_string_lossy();
+                !skip_dirs.iter().any(|s| name == *s)
+            })
+        {
             match entry {
                 Ok(e) => {
                     let depth = e.depth();

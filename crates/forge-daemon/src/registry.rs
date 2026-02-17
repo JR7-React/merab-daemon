@@ -30,7 +30,9 @@ impl AgentRegistry {
                 map.insert(record.id, record);
             }
         }
+        tracing::info!("Loaded {} agents from DB: {:?}", map.len(), map.keys());
         // Block on write since this is called at startup before the async runtime is fully used
+
         // We'll use try_write since we know nobody else holds the lock at init
         if let Ok(mut agents) = self.agents.try_write() {
             *agents = map;

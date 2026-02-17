@@ -215,4 +215,19 @@ impl ForgeClient {
         let result: AiResponse = self.client.request("forge.ai.orchestrate", params).await?;
         Ok(result)
     }
+
+    pub async fn ai_execute_tool(
+        &self,
+        tool_name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        let mut params = ObjectParams::new();
+        params.insert("tool_name", tool_name)?;
+        params.insert("arguments", &arguments)?;
+        let result: serde_json::Value = self
+            .client
+            .request("forge.ai.executeTool", params)
+            .await?;
+        Ok(result)
+    }
 }

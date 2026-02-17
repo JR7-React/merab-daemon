@@ -1,10 +1,10 @@
-# Forge — Agent Runtime Engine
+# Merab — AI Agent Runtime Engine
 
 Runtime local en Rust para orquestar agentes de IA a nivel de sistema operativo.
 
 ## Objetivo
 
-Forge es una infraestructura que permite registrar, lanzar, supervisar y comunicar agentes de IA como procesos del sistema operativo. El daemon central (`forged`) actua como orquestador: gestiona el ciclo de vida de cada agente, media la comunicacion entre ellos y expone una API JSON-RPC local.
+Merab es una infraestructura que permite registrar, lanzar, supervisar y comunicar agentes de IA como procesos del sistema operativo. El daemon central (`merabd`) actua como orquestador: gestiona el ciclo de vida de cada agente, media la comunicacion entre ellos y expone una API JSON-RPC local.
 
 El objetivo final es que cualquier desarrollador pueda:
 
@@ -18,7 +18,7 @@ El objetivo final es que cualquier desarrollador pueda:
 ## Arquitectura
 
 ```
-forge (CLI) --> forged (daemon JSON-RPC :9090) --> agentes (procesos del SO)
+merab (CLI) --> merabd (daemon JSON-RPC :9090) --> agentes (procesos del SO)
                     |
                     +-- Registry (agentes en memoria)
                     +-- ProcessSupervisor (monitoreo de procesos)
@@ -30,23 +30,19 @@ forge (CLI) --> forged (daemon JSON-RPC :9090) --> agentes (procesos del SO)
 
 | Crate | Descripcion |
 |-------|-------------|
-| `forge-core` | Tipos compartidos: Agent, Message, Permission, Error |
-| `forge-daemon` | Servidor JSON-RPC, supervisor de procesos, binary `forged` |
-| `forge-cli` | CLI interactivo, binary `forge` |
-| `forge-store` | Persistencia SQLite |
-| `forge-transport` | Protocolos A2A y MCP |
-| `forge-sandbox` | Permisos y sandboxing de procesos |
+| `merab-core` | Tipos compartidos: Agent, Message, Permission, Error |
+| `merab-daemon` | Servidor JSON-RPC, supervisor de procesos, binary `merabd` |
+| `merab-cli` | CLI interactivo, binary `merab` |
+| `merab-store` | Persistencia SQLite |
+| `merab-transport` | Protocolos A2A y MCP |
+| `merab-sandbox` | Permisos y sandboxing de procesos |
 
 ## Estado
 
-- **Sprint 1** (completado): Scaffold, tipos base, CRUD agentes, daemon, CLI
-- **Sprint 2.1** (completado): Agent lifecycle real — ProcessSupervisor, deteccion de fallos, restart automatico, reconciliacion al startup, graceful shutdown
-- **Sprint 2.2** (pendiente): Message passing entre agentes
-- **Sprint 2.3** (pendiente): Implementacion MCP
-- **Sprint 2.4** (pendiente): Implementacion A2A
-- **Sprint 2.5** (pendiente): Context Proxy (cache tokens LLM)
-- **Sprint 2.6** (pendiente): Memoria compartida
-- **Sprint 2.7** (pendiente): Sandboxing real
+Ver [docs/sprints/README.md](docs/sprints/README.md) para el historial completo de sprints.
+
+- **Sprint 1-8** (completado): MVP, lifecycle, message passing, MCP, AI Coordinator, agentes
+- **Sprint 9-10** (completado): Multi-agent pipeline, Planner LLM, Personas especializadas
 
 ## Uso rapido
 
@@ -54,14 +50,33 @@ forge (CLI) --> forged (daemon JSON-RPC :9090) --> agentes (procesos del SO)
 # Compilar
 cargo build --workspace
 
-# Iniciar daemon
-cargo run --bin forged
+# Inicializar (inicia daemon + registra agentes)
+cargo run --bin merab -- init
 
-# En otra terminal: registrar y arrancar un agente
-cargo run --bin forge -- register mi-agente.toml
-cargo run --bin forge -- start <agent-id>
-cargo run --bin forge -- list
-cargo run --bin forge -- stop <agent-id>
+# Chat interactivo
+cargo run --bin merab -- chat
+
+# Pregunta directa
+cargo run --bin merab -- ask "Lee el README y dime que hace el proyecto"
+```
+
+## Configuracion
+
+Archivo `merab.toml`:
+
+```toml
+[daemon]
+host = "127.0.0.1"
+rpc_port = 9090
+
+[ai]
+model = "arcee-ai/trinity-mini:free"
+
+[ai.personas.coder]
+model = "arcee-ai/trinity-mini:free"
+
+[ai.personas.reviewer]
+model = "stepfun/step-3.5-flash:free"
 ```
 
 ## Requisitos
@@ -69,3 +84,7 @@ cargo run --bin forge -- stop <agent-id>
 - Rust (edicion 2024)
 - Windows: MinGW o VS Build Tools
 - Unix: libc estandar
+
+## Licencia
+
+MIT

@@ -1,239 +1,84 @@
 use std::io;
-use termimad::MadSkin;
-use termimad::crossterm::{
-    style::{Color, Print, ResetColor, SetForegroundColor},
+
+use crossterm::{
+    event::{self, Event, KeyCode, KeyModifiers},
     execute,
-    terminal::{Clear, ClearType},
+    terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
+    style::{Color as CColor, Print, ResetColor, SetForegroundColor},
 };
 use merab_ai::ChatMessage;
+use ratatui::{
+    backend::CrosstermBackend,
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Borders, Paragraph, Wrap},
+    Terminal,
+};
 use crate::client::ForgeClient;
-use rustyline::error::ReadlineError;
-use rustyline::DefaultEditor;
-
-const MAX_CHAT_STEPS: u32 = 10;
 
 pub async fn start_chat_session(client: &ForgeClient) -> anyhow::Result<()> {
+    print_splash()?;
+
     let status = client.get_system_status().await?;
     let model = status.ai.model.clone();
-    
-    print_header(&model)?;
-    
+    let model_short = model.split('/').last().unwrap_or(&model).to_string();
+
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, Clear(ClearType::All))?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+
     let mut context: Vec<ChatMessage> = Vec::new();
-    let skin = make_skin();
-    let mut rl = DefaultEditor::new()?;
-    let mut step_count: u32 = 0;
-    let mut tool_count: u32 = 0;
+    let mut messages: Vec<ChatMessage> = Vec::new();
+    let mut input = String::new();
+    let mut tasks: Vec<(bool, String)> = vec![
+        (true, "Initialize environment".to_string()),
+        (true, "Load MCP agents".to_string()),
+        (false, "Process request".to_string()),
+    ];
+    let mut tokens_used: u64 = 0;
+    let mut scroll_offset: usize = 0;
 
-    loop {
-        execute!(
-            io::stdout(),
-            SetForegroundColor(Color::Cyan),
-            Print("\n╭── You\n╰─> "),
-            ResetColor
-        )?;
+    let res = run_app(
+        &mut terminal,
+        client,
+        &mut context,
+        &mut messages,
+        &mut input,
+        &model_short,
+        &mut tasks,
+        &mut tokens_used,
+        &mut scroll_offset,
+    ).await;
 
-        let readline = rl.readline("");
-        match readline {
-            Ok(line) => {
-                let input = line.trim();
-                rl.add_history_entry(input)?;
+    disable_raw_mode()?;
+    terminal.show_cursor()?;
 
-                if handle_slash_command(input, client, &mut context).await? {
-                    continue;
-                }
-
-                if input.is_empty() {
-                    continue;
-                }
-
-                let result = run_agent_loop(client, input, &mut context, &skin, &model).await;
-                
-                match result {
-                    Ok((response, steps, tools)) => {
-                        if !response.is_empty() {
-                            context.push(ChatMessage::user(input));
-                            context.push(ChatMessage::assistant(&response));
-                        }
-                        step_count += steps;
-                        tool_count += tools;
-                    }
-                    Err(e) => {
-                        print_error(&format!("{}", e))?;
-                    }
-                }
-            }
-            Err(ReadlineError::Interrupted) => {
-                println!("^C");
-                continue;
-            }
-            Err(ReadlineError::Eof) => {
-                print_goodbye(step_count, tool_count)?;
-                break;
-            }
-            Err(err) => {
-                eprintln!("Error: {:?}", err);
-                break;
-            }
-        }
-    }
-
-    Ok(())
+    println!("\n  Thanks for using Merab!\n");
+    res
 }
 
-async fn handle_slash_command(
-    input: &str,
-    client: &ForgeClient,
-    context: &mut Vec<ChatMessage>,
-) -> anyhow::Result<bool> {
-    let parts: Vec<&str> = input.split_whitespace().collect();
-    
-    if parts.is_empty() || !parts[0].starts_with('/') {
-        return Ok(false);
-    }
-
-    match parts[0] {
-        "/help" | "/h" | "/?" => {
-            println!();
-            println!("  Commands:");
-            println!("    /help      Show this help");
-            println!("    /clear     Clear screen");
-            println!("    /reset     Reset conversation");
-            println!("    /model     Show model info");
-            println!("    /agents    List agents");
-            println!("    /status    System status");
-            println!("    /quit      Exit");
-            println!();
-        }
-        "/clear" | "/c" => {
-            execute!(io::stdout(), Clear(ClearType::All), Print("\x1b[H"))?;
-            let status = client.get_system_status().await?;
-            print_header(&status.ai.model)?;
-        }
-        "/reset" | "/r" => {
-            context.clear();
-            println!("\n  Context cleared.\n");
-        }
-        "/model" | "/m" => {
-            let status = client.get_system_status().await?;
-            print_model_info(&status.ai.model, status.ai.max_tokens, status.ai.temperature)?;
-        }
-        "/agents" | "/a" => {
-            let agents = client.list_agents().await?;
-            print_agents(&agents)?;
-        }
-        "/status" | "/s" => {
-            let status = client.get_system_status().await?;
-            print_status_full(&status)?;
-        }
-        "/quit" | "/q" | "/exit" => {
-            println!("\n  Goodbye!\n");
-            std::process::exit(0);
-        }
-        _ => {
-            println!("\n  Unknown command: {}. Type /help\n", parts[0]);
-        }
-    }
-
-    Ok(true)
-}
-
-async fn run_agent_loop(
-    client: &ForgeClient,
-    user_input: &str,
-    context: &mut Vec<ChatMessage>,
-    _skin: &MadSkin,
-    _model: &str,
-) -> anyhow::Result<(String, u32, u32)> {
-    let mut messages = context.clone();
-    messages.push(ChatMessage::user(user_input));
-
-    let mut total_steps: u32 = 0;
-    let mut total_tools: u32 = 0;
-
-    for step in 0..MAX_CHAT_STEPS {
-        let (current_msg, prev_context) = if step == 0 {
-            (user_input.to_string(), context.clone())
-        } else {
-            let last = messages.last().cloned().unwrap_or(ChatMessage::user(""));
-            let prev = messages[..messages.len() - 1].to_vec();
-            (last.content.clone(), prev)
-        };
-
-        let resp = client.ai_chat(&current_msg, prev_context).await;
-
-        match resp {
-            Ok(ai_resp) => {
-                if let Some(tool_call) = &ai_resp.tool_call {
-                    total_steps += 1;
-                    total_tools += 1;
-                    
-                    print_tool_call(&tool_call.name, &tool_call.arguments)?;
-
-                    let tool_result = client
-                        .ai_execute_tool(&tool_call.name, tool_call.arguments.clone())
-                        .await;
-
-                    match tool_result {
-                        Ok(result) => {
-                            print_tool_result(&tool_call.name, &result)?;
-
-                            let result_str = serde_json::to_string(&result)?;
-                            messages.push(ChatMessage::assistant(&ai_resp.content));
-                            messages.push(ChatMessage::user(format!(
-                                "Tool '{}' returned:\n{}",
-                                tool_call.name, result_str
-                            )));
-                            continue;
-                        }
-                        Err(e) => {
-                            print_tool_error(&tool_call.name, &e)?;
-                            messages.push(ChatMessage::assistant(&ai_resp.content));
-                            messages.push(ChatMessage::user(format!(
-                                "Tool '{}' failed: {}",
-                                tool_call.name, e
-                            )));
-                            continue;
-                        }
-                    }
-                } else {
-                    print_ai_response(&ai_resp.content, _skin)?;
-                    return Ok((ai_resp.content, total_steps, total_tools));
-                }
-            }
-            Err(e) => {
-                print_error(&format!("{}", e))?;
-                return Ok((String::new(), total_steps, total_tools));
-            }
-        }
-    }
-
-    println!("\n  Max steps reached.\n");
-    Ok(("(max steps reached)".to_string(), total_steps, total_tools))
-}
-
-// ── UI Components ───────────────────────────────────────────────
-
-fn print_header(model: &str) -> anyhow::Result<()> {
-    let model_short = model.split('/').last().unwrap_or(model);
-    
+fn print_splash() -> anyhow::Result<()> {
     execute!(
         io::stdout(),
         Clear(ClearType::All),
         Print("\x1b[H"),
-        SetForegroundColor(Color::Cyan),
+        SetForegroundColor(CColor::Cyan),
         Print(r#"
               ·✦    ✧    ✦·
            ✧·   · ✦ ·   ·✧
-              ┌────────────┐
-              │  ●     ●  │
-              │    ╭──╯   │
-              └────┬──┬───┘
-            ┌──────┴──┴──────┐
-       ✦·══╡   ░▒▓██▓▒░    ╞══·✦
-            └──────┬──┬──────┘
-                  ▒▓█┘  └█▓▒
+               ┌────────────┐
+               │  ●     ●   │
+               │    ╭──╯    │
+               └────┬──┬────┘
+             ┌──────┴──┴──────┐
+         ✦·══╡   ░▒▓██▓▒░    ╞══·✦
+             └──────┬──┬──────┘
+                 ▒▓█┘  └█▓▒
                ▒▓██████████▓▒
-             ░▒▓██████████████▓▒░
+            ░▒▓██████████████▓▒░
             ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
 
 "#),
@@ -242,7 +87,7 @@ fn print_header(model: &str) -> anyhow::Result<()> {
     
     execute!(
         io::stdout(),
-        SetForegroundColor(Color::Cyan),
+        SetForegroundColor(CColor::Cyan),
         Print("  ███╗   ███╗███████╗██████╗  █████╗ ██████╗ \n"),
         Print("  ████╗ ████║██╔════╝██╔══██╗██╔══██╗██╔══██╗\n"),
         Print("  ██╔████╔██║█████╗  ██████╔╝███████║██████╔╝\n"),
@@ -250,200 +95,313 @@ fn print_header(model: &str) -> anyhow::Result<()> {
         Print("  ██║ ╚═╝ ██║███████╗██║  ██║██║  ██║██████╔╝\n"),
         Print("  ╚═╝     ╚═╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ \n"),
         ResetColor,
-        SetForegroundColor(Color::DarkGrey),
-        Print("       AI Agent Runtime Engine"),
+        SetForegroundColor(CColor::DarkGrey),
+        Print("       AI Agent Runtime Engine\n\n"),
         ResetColor,
     )?;
-    
-    println!();
-    execute!(
-        io::stdout(),
-        SetForegroundColor(Color::DarkGrey),
-        Print(&format!("  Model: {}  |  /help for commands", model_short)),
-        ResetColor,
-    )?;
-    
-    println!();
-    println!();
-    
+
+    std::thread::sleep(std::time::Duration::from_millis(800));
     Ok(())
 }
 
-fn print_tool_call(name: &str, args: &serde_json::Value) -> anyhow::Result<()> {
-    let args_preview = match args {
-        serde_json::Value::Object(map) => {
-            let pairs: Vec<String> = map
-                .iter()
-                .take(2)
-                .map(|(k, v)| {
-                    let val_str = match v {
-                        serde_json::Value::String(s) => {
-                            if s.len() > 30 {
-                                format!("\"{}...\"", &s[..27])
-                            } else {
-                                format!("\"{}\"", s)
+async fn run_app(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    client: &ForgeClient,
+    context: &mut Vec<ChatMessage>,
+    messages: &mut Vec<ChatMessage>,
+    input: &mut String,
+    model: &str,
+    tasks: &mut Vec<(bool, String)>,
+    tokens_used: &mut u64,
+    scroll_offset: &mut usize,
+) -> anyhow::Result<()> {
+    loop {
+        terminal.draw(|f| {
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Min(1), Constraint::Length(3), Constraint::Length(1)])
+                .split(f.area());
+
+            let main_chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(75), Constraint::Percentage(25)])
+                .split(chunks[0]);
+
+            render_feed(f, main_chunks[0], messages, *scroll_offset);
+            render_sidebar(f, main_chunks[1], model, tasks, *tokens_used);
+            render_input(f, chunks[1], input);
+            render_status_bar(f, chunks[2], model);
+        })?;
+
+        if event::poll(std::time::Duration::from_millis(100))? {
+            if let Event::Key(key) = event::read()? {
+                match key.code {
+                    KeyCode::Char(c) => {
+                        if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
+                            return Ok(());
+                        }
+                        input.push(c);
+                    }
+                    KeyCode::Backspace => {
+                        input.pop();
+                    }
+                    KeyCode::Enter => {
+                        if input.trim().is_empty() {
+                            continue;
+                        }
+                        if input.starts_with("/quit") || input.starts_with("/q") {
+                            return Ok(());
+                        }
+                        if input.starts_with("/reset") {
+                            context.clear();
+                            messages.clear();
+                            tasks.retain(|(done, _)| *done);
+                            input.clear();
+                            continue;
+                        }
+                        if input.starts_with("/clear") {
+                            messages.clear();
+                            *scroll_offset = 0;
+                            input.clear();
+                            continue;
+                        }
+
+                        let user_msg = input.clone();
+                        messages.push(ChatMessage::user(&user_msg));
+                        tasks.push((false, format!("Process: {}", &user_msg[..user_msg.len().min(25)])));
+                        input.clear();
+
+                        match process_message(client, context, &user_msg).await {
+                            Ok((response, tokens)) => {
+                                messages.push(ChatMessage::assistant(&response));
+                                context.push(ChatMessage::user(&user_msg));
+                                context.push(ChatMessage::assistant(&response));
+                                *tokens_used += tokens as u64;
+                                if let Some(last_task) = tasks.last_mut() {
+                                    last_task.0 = true;
+                                }
+                            }
+                            Err(e) => {
+                                messages.push(ChatMessage::assistant(&format!("Error: {}", e)));
                             }
                         }
-                        other => {
-                            let s = other.to_string();
-                            if s.len() > 30 {
-                                format!("{}...", &s[..27])
-                            } else {
-                                s
-                            }
+                    }
+                    KeyCode::Up => {
+                        if *scroll_offset > 0 {
+                            *scroll_offset -= 1;
                         }
-                    };
-                    format!("{}={}", k, val_str)
-                })
-                .collect();
-            let more = if map.len() > 2 { "..." } else { "" };
-            format!("{}{}", pairs.join(", "), more)
-        }
-        _ => String::new(),
-    };
-
-    execute!(
-        io::stdout(),
-        SetForegroundColor(Color::Yellow),
-        Print(&format!("  ► {}({})\n", name, args_preview)),
-        ResetColor
-    )?;
-    Ok(())
-}
-
-fn print_tool_result(name: &str, result: &serde_json::Value) -> anyhow::Result<()> {
-    let text = result
-        .get("content")
-        .and_then(|c| c.as_array())
-        .and_then(|arr| arr.first())
-        .and_then(|item| item.get("text"))
-        .and_then(|t| t.as_str())
-        .unwrap_or("");
-
-    let preview = if text.len() > 80 {
-        format!("{}...", &text.replace('\n', " ")[..77])
-    } else {
-        text.replace('\n', " ")
-    };
-
-    execute!(
-        io::stdout(),
-        SetForegroundColor(Color::Green),
-        Print(&format!("  ✓ {} → {}\n", name, preview)),
-        ResetColor
-    )?;
-    Ok(())
-}
-
-fn print_tool_error(name: &str, error: &anyhow::Error) -> anyhow::Result<()> {
-    execute!(
-        io::stdout(),
-        SetForegroundColor(Color::Red),
-        Print(&format!("  ✗ {} failed: {}\n", name, error)),
-        ResetColor
-    )?;
-    Ok(())
-}
-
-fn print_ai_response(content: &str, _skin: &MadSkin) -> anyhow::Result<()> {
-    println!();
-    execute!(
-        io::stdout(),
-        SetForegroundColor(Color::Cyan),
-        Print("╭── Merab\n"),
-        ResetColor,
-    )?;
-    
-    println!("│");
-    
-    for line in content.lines() {
-        println!("│  {}", line);
-    }
-    
-    println!("╰──");
-    println!();
-    Ok(())
-}
-
-fn print_error(msg: &str) -> anyhow::Result<()> {
-    execute!(
-        io::stdout(),
-        SetForegroundColor(Color::Red),
-        Print(&format!("\n  ✗ {}\n", msg)),
-        ResetColor
-    )?;
-    Ok(())
-}
-
-fn print_model_info(model: &str, max_tokens: u32, temperature: f32) -> anyhow::Result<()> {
-    let model_short = model.split('/').last().unwrap_or(model);
-    println!();
-    println!("  Model:       {}", model_short);
-    println!("  Max tokens:  {}", max_tokens);
-    println!("  Temperature: {}", temperature);
-    println!();
-    Ok(())
-}
-
-fn print_agents(agents: &[merab_core::AgentSummary]) -> anyhow::Result<()> {
-    println!();
-    if agents.is_empty() {
-        println!("  No agents registered.");
-    } else {
-        for agent in agents {
-            let status_icon = match agent.status {
-                merab_core::AgentStatus::Running => "●",
-                merab_core::AgentStatus::Stopped => "○",
-                merab_core::AgentStatus::Failed => "✗",
-                _ => "?",
-            };
-            let status_color = match agent.status {
-                merab_core::AgentStatus::Running => Color::Green,
-                merab_core::AgentStatus::Stopped => Color::Yellow,
-                merab_core::AgentStatus::Failed => Color::Red,
-                _ => Color::Reset,
-            };
-            execute!(
-                io::stdout(),
-                SetForegroundColor(status_color),
-                Print(&format!("  {} ", status_icon)),
-                ResetColor,
-                Print(&format!("{} ({:?})\n", agent.name, agent.status)),
-            )?;
+                    }
+                    KeyCode::Down => {
+                        *scroll_offset += 1;
+                    }
+                    KeyCode::Esc => {
+                        return Ok(());
+                    }
+                    _ => {}
+                }
+            }
         }
     }
-    println!();
-    Ok(())
 }
 
-fn print_status_full(status: &merab_core::SystemStatus) -> anyhow::Result<()> {
-    println!();
-    println!("  Version:    {}", status.node_info.version);
-    println!("  Uptime:     {}s", status.node_info.uptime_seconds);
-    println!("  Model:      {}", status.ai.model.split('/').last().unwrap_or(&status.ai.model));
-    println!("  Agents:     {} running", status.agents.iter().filter(|a| a.status == merab_core::AgentStatus::Running).count());
-    println!();
-    Ok(())
+fn render_feed(f: &mut ratatui::Frame, area: Rect, messages: &[ChatMessage], scroll: usize) {
+    let block = Block::default()
+        .title(Line::from(vec![
+            Span::styled(" Feed ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                format!("({} messages)", messages.len()),
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]))
+        .borders(Borders::TOP)
+        .border_style(Style::default().fg(Color::DarkGray));
+
+    let mut lines: Vec<Line> = vec![];
+
+    for msg in messages.iter().skip(scroll) {
+        match &msg.role {
+            merab_ai::ChatRole::User => {
+                lines.push(Line::from(""));
+                lines.push(Line::from(vec![
+                    Span::styled("╭── ", Style::default().fg(Color::Cyan)),
+                    Span::styled("You", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                ]));
+                for line in msg.content.lines().take(50) {
+                    lines.push(Line::from(vec![
+                        Span::styled("│  ", Style::default().fg(Color::DarkGray)),
+                        Span::raw(line),
+                    ]));
+                }
+                lines.push(Line::from("╰──"));
+            }
+            merab_ai::ChatRole::Assistant => {
+                lines.push(Line::from(""));
+                lines.push(Line::from(vec![
+                    Span::styled("╭── ", Style::default().fg(Color::Green)),
+                    Span::styled("Merab", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                ]));
+                for line in msg.content.lines().take(50) {
+                    lines.push(Line::from(vec![
+                        Span::styled("│  ", Style::default().fg(Color::DarkGray)),
+                        Span::raw(line),
+                    ]));
+                }
+                lines.push(Line::from("╰──"));
+            }
+            _ => {}
+        }
+    }
+
+    let paragraph = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
+    f.render_widget(paragraph, area);
 }
 
-fn print_goodbye(steps: u32, tools: u32) -> anyhow::Result<()> {
-    println!();
-    execute!(
-        io::stdout(),
-        SetForegroundColor(Color::Cyan),
-        Print("  Thanks for using Merab!\n"),
-        ResetColor,
-    )?;
-    println!("  Session: {} steps, {} tool calls", steps, tools);
-    println!();
-    Ok(())
+fn render_sidebar(
+    f: &mut ratatui::Frame,
+    area: Rect,
+    model: &str,
+    tasks: &[(bool, String)],
+    tokens: u64,
+) {
+    let block = Block::default()
+        .borders(Borders::LEFT)
+        .border_style(Style::default().fg(Color::DarkGray));
+
+    let lines = vec![
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(" MERAB", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(vec![
+            Span::styled(" AI Agent Runtime", Style::default().fg(Color::DarkGray)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Status", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(vec![
+            Span::styled("  Model: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(model, Style::default().fg(Color::Yellow)),
+        ]),
+        Line::from(vec![
+            Span::styled("  Tokens: ", Style::default().fg(Color::DarkGray)),
+            Span::raw(format!("{}", tokens)),
+        ]),
+        Line::from(vec![
+            Span::styled("  Agents: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("3 running", Style::default().fg(Color::Green)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Tasks", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+        ]),
+    ];
+
+    let mut all_lines = lines;
+    for (done, task) in tasks.iter().take(6) {
+        let check = if *done { "✓" } else { "·" };
+        let style = if *done {
+            Style::default().fg(Color::Green)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
+        all_lines.push(Line::from(vec![
+            Span::styled(format!("  {} ", check), style),
+            Span::styled(
+                if task.len() > 18 { &task[..18] } else { task },
+                style,
+            ),
+        ]));
+    }
+
+    all_lines.push(Line::from(""));
+    all_lines.push(Line::from(vec![
+        Span::styled("◆ ", Style::default().fg(Color::Cyan)),
+        Span::styled("Commands", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+    ]));
+    all_lines.push(Line::from(vec![
+        Span::styled("  /help /reset /quit", Style::default().fg(Color::DarkGray)),
+    ]));
+    all_lines.push(Line::from(""));
+    all_lines.push(Line::from(vec![
+        Span::styled("● ", Style::default().fg(Color::Green)),
+        Span::styled("merab v0.1.0", Style::default().fg(Color::DarkGray)),
+    ]));
+
+    let paragraph = Paragraph::new(all_lines).block(block);
+    f.render_widget(paragraph, area);
 }
 
-fn make_skin() -> MadSkin {
-    let mut skin = MadSkin::default();
-    skin.set_headers_fg(Color::Cyan);
-    skin.bold.set_fg(Color::Yellow);
-    skin.italic.set_fg(Color::DarkGrey);
-    skin.code_block.set_fg(Color::Green);
-    skin
+fn render_input(f: &mut ratatui::Frame, area: Rect, input: &str) {
+    let block = Block::default()
+        .title(Line::from(vec![
+            Span::styled(" Input ", Style::default().fg(Color::Cyan)),
+            Span::styled("(ESC quit, ↑↓ scroll)", Style::default().fg(Color::DarkGray)),
+        ]))
+        .borders(Borders::TOP)
+        .border_style(Style::default().fg(Color::DarkGray));
+
+    let lines = vec![Line::from(vec![
+        Span::styled("❯ ", Style::default().fg(Color::Cyan)),
+        Span::raw(input),
+        Span::styled("▎", Style::default().fg(Color::White).add_modifier(Modifier::SLOW_BLINK)),
+    ])];
+
+    let paragraph = Paragraph::new(lines).block(block);
+    f.render_widget(paragraph, area);
+}
+
+fn render_status_bar(f: &mut ratatui::Frame, area: Rect, model: &str) {
+    let progress = "████░░░░░░";
+
+    let line = Line::from(vec![
+        Span::styled(progress, Style::default().fg(Color::Cyan)),
+        Span::styled(" Ready ", Style::default().fg(Color::DarkGray)),
+        Span::styled("│ ", Style::default().fg(Color::DarkGray)),
+        Span::styled(model, Style::default().fg(Color::Yellow)),
+        Span::styled(" │ ", Style::default().fg(Color::DarkGray)),
+        Span::styled("ESC quit", Style::default().fg(Color::DarkGray)),
+    ]);
+
+    let paragraph = Paragraph::new(line).style(Style::default().bg(Color::Black));
+    f.render_widget(paragraph, area);
+}
+
+async fn process_message(
+    client: &ForgeClient,
+    context: &mut Vec<ChatMessage>,
+    input: &str,
+) -> anyhow::Result<(String, usize)> {
+    let mut messages = context.clone();
+    messages.push(ChatMessage::user(input));
+
+    let max_steps = 10;
+
+    for step in 0..max_steps {
+        let (current_msg, prev_context) = if step == 0 {
+            (input.to_string(), context.clone())
+        } else {
+            let last = messages.last().cloned().unwrap_or(ChatMessage::user(""));
+            let prev = messages[..messages.len().saturating_sub(1)].to_vec();
+            (last.content.clone(), prev)
+        };
+
+        let resp = client.ai_chat(&current_msg, prev_context).await?;
+
+        if let Some(tool_call) = &resp.tool_call {
+            messages.push(ChatMessage::assistant(&resp.content));
+
+            let result = client.ai_execute_tool(&tool_call.name, tool_call.arguments.clone()).await?;
+            let result_str = serde_json::to_string(&result)?;
+            messages.push(ChatMessage::user(format!("Tool '{}': {}", tool_call.name, result_str)));
+            continue;
+        }
+
+        let tokens = resp.content.len();
+        return Ok((resp.content, tokens));
+    }
+
+    Ok(("Max steps reached".to_string(), 0))
 }

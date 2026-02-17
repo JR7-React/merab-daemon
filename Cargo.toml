@@ -1,13 +1,19 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/forge-core",
-    "crates/forge-daemon",
-    "crates/forge-cli",
-    "crates/forge-store",
-    "crates/forge-transport",
-    "crates/forge-sandbox", "crates/forge-config", "crates/forge-tui",
-    "crates/forge-ai", "crates/forge-echo", "crates/forge-fs", "crates/forge-shell", "crates/forge-git",
+    "crates/merab-core",
+    "crates/merab-daemon",
+    "crates/merab-cli",
+    "crates/merab-store",
+    "crates/merab-transport",
+    "crates/merab-sandbox",
+    "crates/merab-config",
+    "crates/merab-tui",
+    "crates/merab-ai",
+    "crates/merab-echo",
+    "crates/merab-fs",
+    "crates/merab-shell",
+    "crates/merab-git",
 ]
 
 [workspace.dependencies]

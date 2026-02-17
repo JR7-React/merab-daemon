@@ -1,4 +1,4 @@
-# Forge — Sprint Documentation
+# Merab — Sprint Documentation
 
 Documentación detallada de cada sprint para continuidad del desarrollo.
 
@@ -10,14 +10,6 @@ Documentación detallada de cada sprint para continuidad del desarrollo.
 | 2.1 | Agent Lifecycle — supervisor, restart policies | `a12543a` | [sprint-2.1](sprint-2.1-agent-lifecycle.md) |
 | 2.2 | Message Passing — mensajería entre agentes | `c223911` | [sprint-2.2](sprint-2.2-message-passing.md) |
 | 2.3 | MCP Implementation — rmcp SDK, tools discovery/invocation | `cf17cc9` | [sprint-2.3](sprint-2.3-mcp-implementation.md) |
-| 2.4 | A2A Protocol — HTTP server, discovery, task execution | pendiente | [sprint-2.4](sprint-2.4-a2a-protocol.md) |
-| 2.5 | Context Proxy — cache de tokens para LLMs | pendiente | [sprint-2.5](sprint-2.5-context-proxy.md) |
-| 2.6 | Shared Memory — key-value store persistente | pendiente | [sprint-2.6](sprint-2.6-shared-memory.md) |
-| 2.7 | Sandboxing Real — Windows Job Objects | pendiente | [sprint-2.7](sprint-2.7-sandboxing.md) |
-| 2.8 | Polish & Stability — RAM limits, CLI polling, cleanup | pendiente | [sprint-2.8](sprint-2.8-polish.md) |
-| 2.9 | Hardening — Config, Indexing, Error Handling | pendiente | [sprint-2.9](sprint-2.9-hardening.md) |
-| 2.10 | TUI Dashboard — Real-time observability | pendiente | [sprint-2.10](sprint-2.10-tui.md) |
-| 3.0 | Cleanup & Tests — 0 warnings, SQL injection fix, 48 tests | pendiente | [sprint-3.0](sprint-3.0-cleanup-tests.md) |
 | 4.0 | AI Coordinator — forge-ai, llm integration, chat/ask commands | pendiente | [sprint-4.0](sprint-4.0-ai-coordinator.md) |
 | 4.1 | Multi-Step Orchestration — loop de orquestación autónomo | completado | [sprint-4.1](sprint-4.1-multistep-orchestration.md) |
 | 5.0 | First MCP Agent — forge-echo reference implementation | pendiente | [sprint-5.0](sprint-5.0-first-agent.md) |
@@ -27,27 +19,21 @@ Documentación detallada de cada sprint para continuidad del desarrollo.
 | 9.0 | Multi-Agent Pipeline — Personas, executePlan | completado | [sprint-9.0](sprint-9.0-multi-agent.md) |
 | 10.0 | Planner LLM — Intelligent task decomposition | completado | [sprint-10.0](sprint-10.0-planner.md) |
 
-## Build rápido
-
-```bash
-export PATH="/c/tools/mingw64/bin:$HOME/.cargo/bin:$PATH"
-cargo build
-```
-
 ## Estructura del proyecto
 
 ```
-forge/
+merab/
 ├── Cargo.toml                 # Workspace
+├── merab.toml                 # Configuración
 ├── docs/sprints/              # Esta documentación
 ├── crates/
-│   ├── forge-core/            # Tipos: Agent, Message, Permission, Error
-│   ├── forge-daemon/          # Servidor JSON-RPC (forged) — 127.0.0.1:9090
-│   ├── forge-cli/             # CLI (forge) — clap
-│   ├── forge-store/           # SQLite (rusqlite bundled)
-│   ├── forge-transport/       # MCP client (rmcp), A2A (placeholder)
-│   ├── forge-sandbox/         # Sandboxing (placeholder)
-│   └── forge-ai/              # AI Client & Types (OpenRouter/Local Proxy)
+│   ├── merab-core/            # Tipos: Agent, Message, Permission, Error
+│   ├── merab-daemon/          # Servidor JSON-RPC (merabd) — 127.0.0.1:9090
+│   ├── merab-cli/             # CLI (merab) — clap
+│   ├── merab-store/           # SQLite (rusqlite bundled)
+│   ├── merab-transport/       # MCP client (rmcp), A2A
+│   ├── merab-sandbox/         # Sandboxing
+│   └── merab-ai/              # AI Client & Types (OpenRouter/Local Proxy)
 ```
 
 ## Todos los RPC methods actuales
@@ -75,21 +61,11 @@ forge/
 ## Todos los CLI commands actuales
 
 ```
-forge ping
-forge register <manifest.toml>
-forge list
-forge status <id>
-forge start <id>
-forge stop <id>
-forge unregister <id>
-forge send <from> <to> <content>
-forge broadcast <from> <content>
-forge messages <agent_id>
-forge ack <message_id>
-forge tools <agent_id>
-forge call <agent_id> <tool_name> [arguments_json]
-forge chat
-forge ask <question>
-forge plan <task>
-forge execute-plan <plan_json>
+merab init
+merab ping
+merab list
+merab chat
+merab ask <question>
+merab plan <task>
+merab execute-plan <plan_json>
 ```

@@ -784,205 +784,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
-name = "forge-ai"
-version = "0.1.0"
-dependencies = [
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "forge-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "crossterm 0.28.1",
- "forge-ai",
- "forge-core",
- "forge-transport",
- "forge-tui",
- "jsonrpsee",
- "ratatui",
- "rustyline",
- "serde",
- "serde_json",
- "termimad",
- "tokio",
- "toml",
-]
-
-[[package]]
-name = "forge-config"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "config",
- "dirs",
- "serde",
-]
-
-[[package]]
-name = "forge-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "toml",
- "uuid",
-]
-
-[[package]]
-name = "forge-daemon"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytes",
- "chrono",
- "dotenv",
- "forge-ai",
- "forge-config",
- "forge-core",
- "forge-sandbox",
- "forge-store",
- "forge-transport",
- "hex",
- "http-body-util",
- "hyper",
- "hyper-util",
- "jsonrpsee",
- "libc",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "tokio",
- "toml",
- "tower 0.4.13",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "forge-echo"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "futures",
- "rmcp",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "forge-fs"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "glob",
- "rmcp",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "walkdir",
-]
-
-[[package]]
-name = "forge-git"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "forge-sandbox"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "forge-core",
- "tracing",
- "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "forge-shell"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "rmcp",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "forge-store"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "forge-core",
- "rusqlite",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "forge-transport"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytes",
- "forge-core",
- "http-body-util",
- "hyper",
- "hyper-util",
- "rmcp",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "url",
- "uuid",
-]
-
-[[package]]
-name = "forge-tui"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "crossterm 0.28.1",
- "forge-core",
- "futures",
- "ratatui",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "form_urlencoded"
 version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1934,6 +1735,205 @@ name = "memchr"
 version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
+
+[[package]]
+name = "merab-ai"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "merab-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "crossterm 0.28.1",
+ "jsonrpsee",
+ "merab-ai",
+ "merab-core",
+ "merab-transport",
+ "merab-tui",
+ "ratatui",
+ "rustyline",
+ "serde",
+ "serde_json",
+ "termimad",
+ "tokio",
+ "toml",
+]
+
+[[package]]
+name = "merab-config"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "config",
+ "dirs",
+ "serde",
+]
+
+[[package]]
+name = "merab-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "toml",
+ "uuid",
+]
+
+[[package]]
+name = "merab-daemon"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "chrono",
+ "dotenv",
+ "hex",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "jsonrpsee",
+ "libc",
+ "merab-ai",
+ "merab-config",
+ "merab-core",
+ "merab-sandbox",
+ "merab-store",
+ "merab-transport",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "toml",
+ "tower 0.4.13",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "merab-echo"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "merab-fs"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "glob",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "walkdir",
+]
+
+[[package]]
+name = "merab-git"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "merab-sandbox"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "merab-core",
+ "tracing",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "merab-shell"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "merab-store"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "merab-core",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "merab-transport"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "merab-core",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "merab-tui"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crossterm 0.28.1",
+ "futures",
+ "merab-core",
+ "ratatui",
+ "serde_json",
+ "tokio",
+]
 
 [[package]]
 name = "mime"

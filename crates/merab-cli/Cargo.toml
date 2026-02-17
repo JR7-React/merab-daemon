@@ -1,0 +1,27 @@
+[package]
+name = "merab-cli"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "merab"
+path = "src/main.rs"
+
+[dependencies]
+merab-core = { path = "../merab-core" }
+merab-transport = { path = "../merab-transport" }
+merab-tui = { path = "../merab-tui" }
+merab-ai = { path = "../merab-ai" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+jsonrpsee = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+toml = { workspace = true }
+termimad = "0.30"
+crossterm = "0.28"
+ratatui = { version = "0.29", default-features = false, features = ["crossterm"] }
+rustyline = "14.0"
+
+

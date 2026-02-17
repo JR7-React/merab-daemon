@@ -64,12 +64,12 @@ impl ForgeConfig {
         
         builder = builder
             .set_default("daemon.host", defaults.daemon.host)?
-            .set_default("daemon.rpc_port", defaults.daemon.rpc_port)?
-            .set_default("daemon.a2a_port", defaults.daemon.a2a_port)?
+            .set_default("daemon.rpc_port", defaults.daemon.rpc_port as i64)?
+            .set_default("daemon.a2a_port", defaults.daemon.a2a_port as i64)?
             .set_default("proxy.enabled", defaults.proxy.enabled)?
-            .set_default("proxy.port", defaults.proxy.port)?
+            .set_default("proxy.port", defaults.proxy.port as i64)?
             .set_default("proxy.upstream_url", defaults.proxy.upstream_url)?
-            .set_default("sandbox.memory_limit_mb", defaults.sandbox.memory_limit_mb)?
+            .set_default("sandbox.memory_limit_mb", defaults.sandbox.memory_limit_mb as i64)?
             .set_default("sandbox.enabled", defaults.sandbox.enabled)?;
 
         // 2. Load from config file (if exists)

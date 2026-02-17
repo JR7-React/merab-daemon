@@ -1,0 +1,8 @@
+name = "mock-agent"
+version = "0.1.0"
+description = "Un agente de prueba para validar MCP y Sandboxing"
+command = "python"
+args = ["examples/mock_agent.py"]
+protocol = "mcp"
+restart_on_failure = false
+working_dir = "."

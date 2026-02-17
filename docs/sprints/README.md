@@ -17,12 +17,7 @@ Documentación detallada de cada sprint para continuidad del desarrollo.
 | 2.8 | Polish & Stability — RAM limits, CLI polling, cleanup | pendiente | [sprint-2.8](sprint-2.8-polish.md) |
 | 2.9 | Hardening — Config, Indexing, Error Handling | pendiente | [sprint-2.9](sprint-2.9-hardening.md) |
 | 2.10 | TUI Dashboard — Real-time observability | pendiente | [sprint-2.10](sprint-2.10-tui.md) |
-
-## Sprints pendientes
-
-| Sprint | Descripción | Prioridad |
-|---|---|---|
-| 3.0 | TBD - Security & Auth | Alta |
+| 3.0 | Cleanup & Tests — 0 warnings, SQL injection fix, 48 tests | pendiente | [sprint-3.0](sprint-3.0-cleanup-tests.md) |
 
 ## Build rápido
 

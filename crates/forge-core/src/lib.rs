@@ -11,3 +11,6 @@ pub use message::*;
 pub use permission::*;
 pub use stats::*;
 pub use task::*;
+
+#[cfg(test)]
+mod tests;

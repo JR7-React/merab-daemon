@@ -78,7 +78,7 @@ impl A2aClient {
             .header("Host", host)
             .body(Empty::<Bytes>::new())?;
 
-        let mut res = sender.send_request(req).await?;
+        let res = sender.send_request(req).await?;
         let body_bytes = res.into_body().collect().await?.to_bytes();
         let card: AgentCard = serde_json::from_slice(&body_bytes)?;
 
@@ -118,9 +118,9 @@ impl A2aClient {
             .header("Content-Type", "application/json")
             .body(Full::new(Bytes::from(rpc_req.to_string())))?;
 
-        let mut res = sender.send_request(req).await?;
+        let res = sender.send_request(req).await?;
         let body_bytes = res.into_body().collect().await?.to_bytes();
-        
+
         // Parse JSON-RPC response
         #[derive(Deserialize)]
         struct RpcResponse {
@@ -169,9 +169,9 @@ impl A2aClient {
             .header("Content-Type", "application/json")
             .body(Full::new(Bytes::from(rpc_req.to_string())))?;
 
-        let mut res = sender.send_request(req).await?;
+        let res = sender.send_request(req).await?;
         let body_bytes = res.into_body().collect().await?.to_bytes();
-        
+
         #[derive(Deserialize)]
         struct RpcResponse {
             result: Option<TaskDetails>,

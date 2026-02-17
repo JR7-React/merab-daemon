@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use serde::Deserialize;
 use anyhow::Result;
 use config::{Config, File, Environment};

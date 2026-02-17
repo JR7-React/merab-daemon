@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use rusqlite::params;
 use serde_json::Value;
 
@@ -57,20 +57,29 @@ impl Database {
 
     pub fn list_memory_keys(&self, prefix: Option<&str>) -> Result<Vec<String>, rusqlite::Error> {
         let now = Utc::now().to_rfc3339();
-        let query = if let Some(p) = prefix {
-            format!("SELECT key FROM shared_memory WHERE key LIKE '{}%' AND (expires_at IS NULL OR expires_at > ?1)", p)
+
+        if let Some(p) = prefix {
+            let like_pattern = format!("{}%", p);
+            let mut stmt = self.conn.prepare(
+                "SELECT key FROM shared_memory WHERE key LIKE ?1 AND (expires_at IS NULL OR expires_at > ?2)",
+            )?;
+            let rows = stmt.query_map(params![like_pattern, now], |row| row.get(0))?;
+            let mut keys = Vec::new();
+            for key in rows {
+                keys.push(key?);
+            }
+            Ok(keys)
         } else {
-            "SELECT key FROM shared_memory WHERE (expires_at IS NULL OR expires_at > ?1)".to_string()
-        };
-
-        let mut stmt = self.conn.prepare(&query)?;
-        let rows = stmt.query_map(params![now], |row| row.get(0))?;
-
-        let mut keys = Vec::new();
-        for key in rows {
-            keys.push(key?);
+            let mut stmt = self.conn.prepare(
+                "SELECT key FROM shared_memory WHERE (expires_at IS NULL OR expires_at > ?1)",
+            )?;
+            let rows = stmt.query_map(params![now], |row| row.get(0))?;
+            let mut keys = Vec::new();
+            for key in rows {
+                keys.push(key?);
+            }
+            Ok(keys)
         }
-        Ok(keys)
     }
 
     pub fn cleanup_expired_memory(&self) -> Result<usize, rusqlite::Error> {

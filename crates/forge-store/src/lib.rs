@@ -7,3 +7,6 @@ pub mod tasks;
 
 pub use db::Database;
 pub use cache::CacheEntry;
+
+#[cfg(test)]
+mod tests;

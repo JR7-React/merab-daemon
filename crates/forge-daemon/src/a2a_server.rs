@@ -21,6 +21,7 @@ use crate::mcp_manager::McpManager;
 pub struct A2AContext {
     pub db: Arc<Mutex<Database>>,
     pub mcp_manager: Arc<McpManager>,
+    pub a2a_port: u16,
 }
 
 pub async fn start_a2a_server(addr: SocketAddr, context: Arc<A2AContext>) -> anyhow::Result<()> {
@@ -72,16 +73,20 @@ async fn handle_agent_card(ctx: Arc<A2AContext>) -> Result<Response<Full<Bytes>>
     let card = AgentCard {
         name: "Forge Runtime".to_string(),
         description: "A local agent runtime hosting multiple MCP agents".to_string(),
-        url: "http://localhost:8080".to_string(), 
+        url: format!("http://localhost:{}", ctx.a2a_port),
         skills,
     };
 
     let json = serde_json::to_string_pretty(&card).unwrap_or_default();
-    Ok(Response::new(Full::new(Bytes::from(json))))
+    Ok(Response::builder()
+        .header("Content-Type", "application/json")
+        .body(Full::new(Bytes::from(json)))
+        .unwrap())
 }
 
 #[derive(serde::Deserialize)]
 struct RpcRequest {
+    #[allow(dead_code)]
     jsonrpc: String,
     method: String,
     params: Option<Value>,
@@ -124,7 +129,10 @@ async fn handle_rpc(
         }),
     };
 
-    Ok(Response::new(Full::new(Bytes::from(response_body.to_string()))))
+    Ok(Response::builder()
+        .header("Content-Type", "application/json")
+        .body(Full::new(Bytes::from(response_body.to_string())))
+        .unwrap())
 }
 
 async fn handle_task_send(params: Option<Value>, ctx: Arc<A2AContext>) -> Result<Value, String> {

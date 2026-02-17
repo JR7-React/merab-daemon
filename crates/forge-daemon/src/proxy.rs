@@ -1,7 +1,6 @@
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Duration;
 
 use bytes::Bytes;
 use forge_store::{CacheEntry, Database};
@@ -21,6 +20,7 @@ pub struct ProxyContext {
     pub db: Arc<Mutex<Database>>,
     pub upstream_url: String,
     pub api_key: Option<String>,
+    pub http_client: HttpClient,
 }
 
 pub async fn start_proxy_server(addr: SocketAddr, context: Arc<ProxyContext>) -> anyhow::Result<()> {
@@ -155,10 +155,7 @@ async fn forward_request(
     body: Bytes,
     _is_stream: bool,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
-    let client = HttpClient::builder()
-        .timeout(Duration::from_secs(60))
-        .build()
-        .unwrap();
+    let client = &ctx.http_client;
 
     let url = format!("{}/chat/completions", ctx.upstream_url.trim_end_matches('/'));
     

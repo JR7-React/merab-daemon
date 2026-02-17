@@ -63,6 +63,7 @@ async fn main() -> Result<()> {
     let a2a_ctx = Arc::new(A2AContext {
         db: db.clone(),
         mcp_manager: mcp_manager.clone(),
+        a2a_port: config.daemon.a2a_port,
     });
     let a2a_port = config.daemon.a2a_port;
     let a2a_addr = SocketAddr::from(([127, 0, 0, 1], a2a_port));
@@ -78,10 +79,16 @@ async fn main() -> Result<()> {
         let proxy_key = config.proxy.api_key.clone()
             .or_else(|| std::env::var("FORGE_PROXY_API_KEY").ok());
 
+        let http_client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(60))
+            .build()
+            .expect("failed to build HTTP client");
+
         let proxy_ctx = Arc::new(ProxyContext {
             db: db.clone(),
             upstream_url: proxy_upstream,
             api_key: proxy_key,
+            http_client,
         });
         let proxy_port = config.proxy.port;
         let proxy_addr = SocketAddr::from(([127, 0, 0, 1], proxy_port));

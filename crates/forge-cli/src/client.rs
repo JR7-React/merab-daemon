@@ -1,6 +1,6 @@
 use anyhow::Result;
 use forge_core::{AgentManifest, AgentRecord, AgentSummary, Message};
-use forge_transport::a2a::{AgentCard, TaskResponse, TaskDetails};
+use forge_transport::a2a::{AgentCard, TaskResponse};
 use jsonrpsee::core::client::ClientT;
 use jsonrpsee::core::params::ObjectParams;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};

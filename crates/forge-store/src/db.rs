@@ -67,6 +67,19 @@ impl Database {
                 created_at  TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
             );
+
+            CREATE TABLE IF NOT EXISTS llm_cache (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                hash        TEXT NOT NULL UNIQUE,
+                request     TEXT NOT NULL,
+                response    TEXT NOT NULL,
+                model       TEXT NOT NULL,
+                provider    TEXT,
+                created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+                hits        INTEGER DEFAULT 1
+            );
+            
+            CREATE INDEX IF NOT EXISTS idx_cache_hash ON llm_cache(hash);
             ",
         )?;
 

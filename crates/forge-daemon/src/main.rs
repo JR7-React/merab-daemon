@@ -12,12 +12,16 @@ use forge_daemon::a2a_server::{start_a2a_server, A2AContext};
 use forge_daemon::handlers::{ForgeApiServer, ForgeRpc};
 use forge_daemon::mcp_manager::McpManager;
 use forge_daemon::process::is_process_alive;
+use forge_daemon::proxy::{start_proxy_server, ProxyContext};
 use forge_daemon::registry::AgentRegistry;
 use forge_daemon::supervisor::ProcessSupervisor;
 use forge_store::Database;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Load .env if present
+    dotenv::dotenv().ok();
+
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
@@ -50,6 +54,23 @@ async fn main() -> Result<()> {
     tokio::spawn(async move {
         if let Err(e) = start_a2a_server(a2a_addr, a2a_ctx).await {
             tracing::error!("A2A server failed: {:?}", e);
+        }
+    });
+
+    // Start LLM Proxy Server
+    let proxy_upstream = std::env::var("FORGE_PROXY_UPSTREAM_URL")
+        .unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
+    let proxy_key = std::env::var("FORGE_PROXY_API_KEY").ok();
+
+    let proxy_ctx = Arc::new(ProxyContext {
+        db: db.clone(),
+        upstream_url: proxy_upstream,
+        api_key: proxy_key,
+    });
+    let proxy_addr = SocketAddr::from(([127, 0, 0, 1], 8001));
+    tokio::spawn(async move {
+        if let Err(e) = start_proxy_server(proxy_addr, proxy_ctx).await {
+            tracing::error!("Proxy server failed: {:?}", e);
         }
     });
 

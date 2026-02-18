@@ -2,11 +2,11 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use merab_config::ForgeConfig;
+use merab_config::MerabConfig;
 use merab_core::{AgentManifest, AgentRecord, AgentSummary, ProtocolKind};
 use merab_daemon::mcp_manager::McpManager;
 use merab_daemon::registry::AgentRegistry;
-use merab_daemon::rpc::{ForgeApiServer, ForgeRpc};
+use merab_daemon::rpc::{MerabApiServer, MerabRpc};
 use merab_daemon::supervisor::ProcessSupervisor;
 use merab_store::Database;
 use jsonrpsee::core::client::ClientT;
@@ -24,9 +24,9 @@ async fn setup() -> (HttpClient, SocketAddr) {
     let db = Arc::new(Mutex::new(db));
     let supervisor = Arc::new(ProcessSupervisor::new(registry.clone(), db.clone()));
     let mcp_manager = Arc::new(McpManager::new());
-    let config = Arc::new(ForgeConfig::default());
+    let config = Arc::new(MerabConfig::default());
 
-    let rpc = ForgeRpc {
+    let rpc = MerabRpc {
         registry,
         db,
         supervisor,
@@ -71,7 +71,7 @@ fn sample_manifest(name: &str) -> AgentManifest {
 async fn test_ping() {
     let (client, _) = setup().await;
     let result: String = client
-        .request("forge.ping", ObjectParams::new())
+        .request("merab.ping", ObjectParams::new())
         .await
         .expect("ping");
     assert_eq!(result, "pong");
@@ -84,7 +84,7 @@ async fn test_register_returns_record() {
     let mut params = ObjectParams::new();
     params.insert("manifest", &manifest).unwrap();
     let record: AgentRecord = client
-        .request("forge.registerAgent", params)
+        .request("merab.registerAgent", params)
         .await
         .expect("register");
     assert_eq!(record.manifest.name, "reg1");
@@ -98,12 +98,12 @@ async fn test_list_contains_registered() {
     let mut params = ObjectParams::new();
     params.insert("manifest", &manifest).unwrap();
     let _: AgentRecord = client
-        .request("forge.registerAgent", params)
+        .request("merab.registerAgent", params)
         .await
         .expect("register");
 
     let list: Vec<AgentSummary> = client
-        .request("forge.listAgents", ObjectParams::new())
+        .request("merab.listAgents", ObjectParams::new())
         .await
         .expect("list");
     assert_eq!(list.len(), 1);
@@ -117,13 +117,13 @@ async fn test_get_agent() {
     let mut params = ObjectParams::new();
     params.insert("manifest", &manifest).unwrap();
     let record: AgentRecord = client
-        .request("forge.registerAgent", params)
+        .request("merab.registerAgent", params)
         .await
         .expect("register");
 
     let mut params = ObjectParams::new();
     params.insert("id", record.id.to_string()).unwrap();
-    let fetched: AgentRecord = client.request("forge.getAgent", params).await.expect("get");
+    let fetched: AgentRecord = client.request("merab.getAgent", params).await.expect("get");
     assert_eq!(fetched.id, record.id);
 }
 
@@ -135,13 +135,13 @@ async fn test_register_duplicate_fails() {
     let mut params = ObjectParams::new();
     params.insert("manifest", &manifest).unwrap();
     let _: AgentRecord = client
-        .request("forge.registerAgent", params)
+        .request("merab.registerAgent", params)
         .await
         .expect("first register");
 
     let mut params = ObjectParams::new();
     params.insert("manifest", &manifest).unwrap();
-    let result: Result<AgentRecord, _> = client.request("forge.registerAgent", params).await;
+    let result: Result<AgentRecord, _> = client.request("merab.registerAgent", params).await;
     assert!(result.is_err());
 }
 
@@ -151,7 +151,7 @@ async fn test_start_nonexistent_agent_fails() {
     let fake_id = uuid::Uuid::new_v4().to_string();
     let mut params = ObjectParams::new();
     params.insert("id", &fake_id).unwrap();
-    let result: Result<AgentRecord, _> = client.request("forge.startAgent", params).await;
+    let result: Result<AgentRecord, _> = client.request("merab.startAgent", params).await;
     assert!(result.is_err());
 }
 
@@ -162,13 +162,13 @@ async fn test_stop_non_running_agent_fails() {
     let mut params = ObjectParams::new();
     params.insert("manifest", &manifest).unwrap();
     let record: AgentRecord = client
-        .request("forge.registerAgent", params)
+        .request("merab.registerAgent", params)
         .await
         .expect("register");
 
     let mut params = ObjectParams::new();
     params.insert("id", record.id.to_string()).unwrap();
-    let result: Result<AgentRecord, _> = client.request("forge.stopAgent", params).await;
+    let result: Result<AgentRecord, _> = client.request("merab.stopAgent", params).await;
     assert!(result.is_err());
 }
 
@@ -179,20 +179,20 @@ async fn test_unregister_cleans_up() {
     let mut params = ObjectParams::new();
     params.insert("manifest", &manifest).unwrap();
     let record: AgentRecord = client
-        .request("forge.registerAgent", params)
+        .request("merab.registerAgent", params)
         .await
         .expect("register");
 
     let mut params = ObjectParams::new();
     params.insert("id", record.id.to_string()).unwrap();
     let ok: bool = client
-        .request("forge.unregisterAgent", params)
+        .request("merab.unregisterAgent", params)
         .await
         .expect("unregister");
     assert!(ok);
 
     let list: Vec<AgentSummary> = client
-        .request("forge.listAgents", ObjectParams::new())
+        .request("merab.listAgents", ObjectParams::new())
         .await
         .expect("list");
     assert_eq!(list.len(), 0);
@@ -210,7 +210,7 @@ async fn test_memory_put_get_delete() {
     params.insert("value", &json!({"hello": "world"})).unwrap();
     params.insert("ttl_seconds", Option::<u64>::None).unwrap();
     let ok: bool = client
-        .request("forge.memory.put", params)
+        .request("merab.memory.put", params)
         .await
         .expect("put");
     assert!(ok);
@@ -219,7 +219,7 @@ async fn test_memory_put_get_delete() {
     let mut params = ObjectParams::new();
     params.insert("key", "test.key").unwrap();
     let val: Option<serde_json::Value> = client
-        .request("forge.memory.get", params)
+        .request("merab.memory.get", params)
         .await
         .expect("get");
     assert_eq!(val, Some(json!({"hello": "world"})));
@@ -228,7 +228,7 @@ async fn test_memory_put_get_delete() {
     let mut params = ObjectParams::new();
     params.insert("key", "test.key").unwrap();
     let deleted: bool = client
-        .request("forge.memory.delete", params)
+        .request("merab.memory.delete", params)
         .await
         .expect("delete");
     assert!(deleted);
@@ -237,7 +237,7 @@ async fn test_memory_put_get_delete() {
     let mut params = ObjectParams::new();
     params.insert("key", "test.key").unwrap();
     let val: Option<serde_json::Value> = client
-        .request("forge.memory.get", params)
+        .request("merab.memory.get", params)
         .await
         .expect("get after delete");
     assert!(val.is_none());
@@ -253,7 +253,7 @@ async fn test_memory_ttl_expiration() {
     params.insert("value", &json!("temporary")).unwrap();
     params.insert("ttl_seconds", Some(1u64)).unwrap();
     let _: bool = client
-        .request("forge.memory.put", params)
+        .request("merab.memory.put", params)
         .await
         .expect("put with ttl");
 
@@ -264,7 +264,7 @@ async fn test_memory_ttl_expiration() {
     let mut params = ObjectParams::new();
     params.insert("key", "ttl.key").unwrap();
     let val: Option<serde_json::Value> = client
-        .request("forge.memory.get", params)
+        .request("merab.memory.get", params)
         .await
         .expect("get expired");
     assert!(val.is_none());
@@ -281,7 +281,7 @@ async fn test_memory_list() {
         params.insert("value", &json!(1)).unwrap();
         params.insert("ttl_seconds", Option::<u64>::None).unwrap();
         let _: bool = client
-            .request("forge.memory.put", params)
+            .request("merab.memory.put", params)
             .await
             .expect("put");
     }
@@ -290,7 +290,7 @@ async fn test_memory_list() {
     let mut params = ObjectParams::new();
     params.insert("prefix", Option::<String>::None).unwrap();
     let keys: Vec<String> = client
-        .request("forge.memory.list", params)
+        .request("merab.memory.list", params)
         .await
         .expect("list all");
     assert_eq!(keys.len(), 3);
@@ -299,7 +299,7 @@ async fn test_memory_list() {
     let mut params = ObjectParams::new();
     params.insert("prefix", Some("ns.")).unwrap();
     let keys: Vec<String> = client
-        .request("forge.memory.list", params)
+        .request("merab.memory.list", params)
         .await
         .expect("list prefix");
     assert_eq!(keys.len(), 2);
@@ -311,7 +311,7 @@ async fn test_memory_list() {
 async fn test_system_status() {
     let (client, _) = setup().await;
     let status: merab_core::SystemStatus = client
-        .request("forge.getSystemStatus", ObjectParams::new())
+        .request("merab.getSystemStatus", ObjectParams::new())
         .await
         .expect("status");
     assert_eq!(status.agents.len(), 0);
@@ -328,14 +328,14 @@ async fn test_ai_chat_method_exists() {
     let ctx_json = serde_json::to_string(&ctx).unwrap();
 
     let res: Result<merab_ai::AiResponse, _> = client
-        .request("forge.ai.chat", rpc_params![msg, ctx_json])
+        .request("merab.ai.chat", rpc_params![msg, ctx_json])
         .await;
 
     if let Err(e) = res {
         let err_str = format!("{:?}", e);
         assert!(
             !err_str.contains("-32601"),
-            "forge.ai.chat method not found: {}",
+            "merab.ai.chat method not found: {}",
             err_str
         );
     }
@@ -347,14 +347,14 @@ async fn test_ai_orchestrate_method_exists() {
     let task = "Analyze this";
 
     let res: Result<merab_ai::AiResponse, _> = client
-        .request("forge.ai.orchestrate", rpc_params![task])
+        .request("merab.ai.orchestrate", rpc_params![task])
         .await;
 
     if let Err(e) = res {
         let err_str = format!("{:?}", e);
         assert!(
             !err_str.contains("-32601"),
-            "forge.ai.orchestrate method not found: {}",
+            "merab.ai.orchestrate method not found: {}",
             err_str
         );
     }

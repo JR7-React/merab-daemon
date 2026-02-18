@@ -1,6 +1,6 @@
-name = "forge-git"
+name = "merab-git"
 description = "Agent for git operations"
-command = "target/debug/forge-git.exe"
+command = "target/debug/merab-git.exe"
 version = "0.1.0"
 protocol = "mcp"
 env = {}

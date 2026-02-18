@@ -2,9 +2,9 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use merab_ai::{AiResponse, ChatMessage};
-use merab_config::ForgeConfig;
+use merab_config::MerabConfig;
 use merab_core::{
-    AgentManifest, AgentRecord, AgentStats, AgentStatus, AgentSummary, AiInfo, ForgeError, Message,
+    AgentManifest, AgentRecord, AgentStats, AgentStatus, AgentSummary, AiInfo, MerabError, Message,
     NodeInfo, ProtocolKind, ProxyStats, SystemStatus,
 };
 use merab_store::Database;
@@ -22,32 +22,32 @@ use crate::rpc::ai_methods;
 use crate::supervisor::ProcessSupervisor;
 
 #[rpc(server)]
-pub trait ForgeApi {
-    #[method(name = "forge.ping")]
+pub trait MerabApi {
+    #[method(name = "merab.ping")]
     async fn ping(&self) -> Result<String, ErrorObjectOwned>;
 
-    #[method(name = "forge.registerAgent")]
+    #[method(name = "merab.registerAgent")]
     async fn register_agent(
         &self,
         manifest: AgentManifest,
     ) -> Result<AgentRecord, ErrorObjectOwned>;
 
-    #[method(name = "forge.listAgents")]
+    #[method(name = "merab.listAgents")]
     async fn list_agents(&self) -> Result<Vec<AgentSummary>, ErrorObjectOwned>;
 
-    #[method(name = "forge.getAgent")]
+    #[method(name = "merab.getAgent")]
     async fn get_agent(&self, id: String) -> Result<AgentRecord, ErrorObjectOwned>;
 
-    #[method(name = "forge.startAgent")]
+    #[method(name = "merab.startAgent")]
     async fn start_agent(&self, id: String) -> Result<AgentRecord, ErrorObjectOwned>;
 
-    #[method(name = "forge.stopAgent")]
+    #[method(name = "merab.stopAgent")]
     async fn stop_agent(&self, id: String) -> Result<AgentRecord, ErrorObjectOwned>;
 
-    #[method(name = "forge.unregisterAgent")]
+    #[method(name = "merab.unregisterAgent")]
     async fn unregister_agent(&self, id: String) -> Result<bool, ErrorObjectOwned>;
 
-    #[method(name = "forge.sendMessage")]
+    #[method(name = "merab.sendMessage")]
     async fn send_message(
         &self,
         from: String,
@@ -55,23 +55,23 @@ pub trait ForgeApi {
         content: String,
     ) -> Result<Message, ErrorObjectOwned>;
 
-    #[method(name = "forge.broadcastMessage")]
+    #[method(name = "merab.broadcastMessage")]
     async fn broadcast_message(
         &self,
         from: String,
         content: String,
     ) -> Result<Message, ErrorObjectOwned>;
 
-    #[method(name = "forge.getMessages")]
+    #[method(name = "merab.getMessages")]
     async fn get_messages(&self, agent_id: String) -> Result<Vec<Message>, ErrorObjectOwned>;
 
-    #[method(name = "forge.ackMessage")]
+    #[method(name = "merab.ackMessage")]
     async fn ack_message(&self, message_id: String) -> Result<bool, ErrorObjectOwned>;
 
-    #[method(name = "forge.listTools")]
+    #[method(name = "merab.listTools")]
     async fn list_tools(&self, agent_id: String) -> Result<Vec<McpToolInfo>, ErrorObjectOwned>;
 
-    #[method(name = "forge.callTool")]
+    #[method(name = "merab.callTool")]
     async fn call_tool(
         &self,
         agent_id: String,
@@ -79,10 +79,10 @@ pub trait ForgeApi {
         arguments: serde_json::Value,
     ) -> Result<serde_json::Value, ErrorObjectOwned>;
 
-    #[method(name = "forge.a2aDiscover")]
+    #[method(name = "merab.a2aDiscover")]
     async fn a2a_discover(&self, url: String) -> Result<AgentCard, ErrorObjectOwned>;
 
-    #[method(name = "forge.a2aSend")]
+    #[method(name = "merab.a2aSend")]
     async fn a2a_send(
         &self,
         url: String,
@@ -90,14 +90,14 @@ pub trait ForgeApi {
         input: serde_json::Value,
     ) -> Result<TaskResponse, ErrorObjectOwned>;
 
-    #[method(name = "forge.a2aGetTask")]
+    #[method(name = "merab.a2aGetTask")]
     async fn a2a_get_task(
         &self,
         url: String,
         task_id: String,
     ) -> Result<merab_transport::a2a::TaskDetails, ErrorObjectOwned>;
 
-    #[method(name = "forge.memory.put")]
+    #[method(name = "merab.memory.put")]
     async fn memory_put(
         &self,
         key: String,
@@ -105,63 +105,63 @@ pub trait ForgeApi {
         ttl_seconds: Option<u64>,
     ) -> Result<bool, ErrorObjectOwned>;
 
-    #[method(name = "forge.memory.get")]
+    #[method(name = "merab.memory.get")]
     async fn memory_get(&self, key: String) -> Result<Option<serde_json::Value>, ErrorObjectOwned>;
 
-    #[method(name = "forge.memory.delete")]
+    #[method(name = "merab.memory.delete")]
     async fn memory_delete(&self, key: String) -> Result<bool, ErrorObjectOwned>;
 
-    #[method(name = "forge.memory.list")]
+    #[method(name = "merab.memory.list")]
     async fn memory_list(&self, prefix: Option<String>) -> Result<Vec<String>, ErrorObjectOwned>;
 
-    #[method(name = "forge.getSystemStatus")]
+    #[method(name = "merab.getSystemStatus")]
     async fn get_system_status(&self) -> Result<SystemStatus, ErrorObjectOwned>;
 
     // AI methods
-    #[method(name = "forge.ai.chat")]
+    #[method(name = "merab.ai.chat")]
     async fn ai_chat(
         &self,
         message: String,
         context_json: String,
     ) -> Result<AiResponse, ErrorObjectOwned>;
 
-    #[method(name = "forge.ai.orchestrate")]
+    #[method(name = "merab.ai.orchestrate")]
     async fn ai_orchestrate(&self, task: String) -> Result<AiResponse, ErrorObjectOwned>;
 
-    #[method(name = "forge.ai.executeTool")]
+    #[method(name = "merab.ai.executeTool")]
     async fn ai_execute_tool(
         &self,
         tool_name: String,
         arguments: serde_json::Value,
     ) -> Result<serde_json::Value, ErrorObjectOwned>;
 
-    #[method(name = "forge.ai.plan")]
+    #[method(name = "merab.ai.plan")]
     async fn ai_plan(&self, task: String) -> Result<serde_json::Value, ErrorObjectOwned>;
 
-    #[method(name = "forge.ai.executePlan")]
+    #[method(name = "merab.ai.executePlan")]
     async fn ai_execute_plan(&self, plan_json: String) -> Result<serde_json::Value, ErrorObjectOwned>;
 }
 
-pub struct ForgeRpc {
+pub struct MerabRpc {
     pub registry: Arc<AgentRegistry>,
     pub db: Arc<Mutex<Database>>,
     pub supervisor: Arc<ProcessSupervisor>,
     pub mcp_manager: Arc<McpManager>,
-    pub config: Arc<ForgeConfig>,
+    pub config: Arc<MerabConfig>,
     pub start_time: Instant,
 }
 
-pub(crate) fn to_rpc_error(e: ForgeError) -> ErrorObjectOwned {
+pub(crate) fn to_rpc_error(e: MerabError) -> ErrorObjectOwned {
     ErrorObjectOwned::owned(e.code(), e.to_string(), None::<()>)
 }
 
 fn parse_id(id: &str) -> Result<Uuid, ErrorObjectOwned> {
     Uuid::parse_str(id)
-        .map_err(|_| to_rpc_error(ForgeError::InvalidManifest("invalid agent id".into())))
+        .map_err(|_| to_rpc_error(MerabError::InvalidManifest("invalid agent id".into())))
 }
 
 #[async_trait]
-impl ForgeApiServer for ForgeRpc {
+impl MerabApiServer for MerabRpc {
     async fn ping(&self) -> Result<String, ErrorObjectOwned> {
         Ok("pong".to_string())
     }
@@ -172,19 +172,19 @@ impl ForgeApiServer for ForgeRpc {
     ) -> Result<AgentRecord, ErrorObjectOwned> {
         let record = AgentRecord::new(manifest);
         if self.registry.get(record.id).await.is_ok() {
-            return Err(to_rpc_error(ForgeError::AlreadyExists(
+            return Err(to_rpc_error(MerabError::AlreadyExists(
                 record.id.to_string(),
             )));
         }
         {
             let db = self.db.lock().await;
             db.insert_agent(&record)
-                .map_err(|e| to_rpc_error(ForgeError::Store(e.to_string())))?;
+                .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))?;
         }
         self.registry
             .register(record.clone())
             .await
-            .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))?;
+            .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
         tracing::info!(id = %record.id, name = %record.manifest.name, "agent registered");
         Ok(record)
     }
@@ -198,7 +198,7 @@ impl ForgeApiServer for ForgeRpc {
         self.registry
             .get(uuid)
             .await
-            .map_err(|_| to_rpc_error(ForgeError::AgentNotFound(uuid)))
+            .map_err(|_| to_rpc_error(MerabError::AgentNotFound(uuid)))
     }
 
     async fn start_agent(&self, id: String) -> Result<AgentRecord, ErrorObjectOwned> {
@@ -207,9 +207,9 @@ impl ForgeApiServer for ForgeRpc {
             .registry
             .get(uuid)
             .await
-            .map_err(|_| to_rpc_error(ForgeError::AgentNotFound(uuid)))?;
+            .map_err(|_| to_rpc_error(MerabError::AgentNotFound(uuid)))?;
         if record.status == AgentStatus::Running {
-            return Err(to_rpc_error(ForgeError::AlreadyRunning(uuid)));
+            return Err(to_rpc_error(MerabError::AlreadyRunning(uuid)));
         }
         let manifest = &record.manifest;
         let is_mcp = manifest.protocol == ProtocolKind::Mcp;
@@ -224,11 +224,11 @@ impl ForgeApiServer for ForgeRpc {
             cmd.stderr(std::process::Stdio::null());
             let mcp_client = merab_transport::mcp::McpClient::connect(uuid, cmd)
                 .await
-                .map_err(|e| to_rpc_error(ForgeError::Transport(e.to_string())))?;
+                .map_err(|e| to_rpc_error(MerabError::Transport(e.to_string())))?;
             self.registry
                 .update_status(uuid, AgentStatus::Running, None)
                 .await
-                .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))?;
+                .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
             {
                 let db = self.db.lock().await;
                 let _ = db.update_agent_status(uuid, AgentStatus::Running, None);
@@ -254,7 +254,7 @@ impl ForgeApiServer for ForgeRpc {
                 }
             };
             let child = cmd.spawn().map_err(|e| {
-                to_rpc_error(ForgeError::Internal(format!(
+                to_rpc_error(MerabError::Internal(format!(
                     "failed to start process: {}",
                     e
                 )))
@@ -268,7 +268,7 @@ impl ForgeApiServer for ForgeRpc {
             self.registry
                 .update_status(uuid, AgentStatus::Running, pid)
                 .await
-                .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))?;
+                .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
             {
                 let db = self.db.lock().await;
                 let _ = db.update_agent_status(uuid, AgentStatus::Running, pid);
@@ -281,7 +281,7 @@ impl ForgeApiServer for ForgeRpc {
         self.registry
             .get(uuid)
             .await
-            .map_err(|_| to_rpc_error(ForgeError::AgentNotFound(uuid)))
+            .map_err(|_| to_rpc_error(MerabError::AgentNotFound(uuid)))
     }
 
     async fn stop_agent(&self, id: String) -> Result<AgentRecord, ErrorObjectOwned> {
@@ -290,9 +290,9 @@ impl ForgeApiServer for ForgeRpc {
             .registry
             .get(uuid)
             .await
-            .map_err(|_| to_rpc_error(ForgeError::AgentNotFound(uuid)))?;
+            .map_err(|_| to_rpc_error(MerabError::AgentNotFound(uuid)))?;
         if record.status != AgentStatus::Running {
-            return Err(to_rpc_error(ForgeError::NotRunning(uuid)));
+            return Err(to_rpc_error(MerabError::NotRunning(uuid)));
         }
         if record.manifest.protocol == ProtocolKind::Mcp {
             self.mcp_manager.remove_client(uuid).await;
@@ -301,7 +301,7 @@ impl ForgeApiServer for ForgeRpc {
         self.registry
             .update_status(uuid, AgentStatus::Stopped, None)
             .await
-            .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))?;
+            .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
         {
             let db = self.db.lock().await;
             let _ = db.update_agent_status(uuid, AgentStatus::Stopped, None);
@@ -310,7 +310,7 @@ impl ForgeApiServer for ForgeRpc {
         self.registry
             .get(uuid)
             .await
-            .map_err(|_| to_rpc_error(ForgeError::AgentNotFound(uuid)))
+            .map_err(|_| to_rpc_error(MerabError::AgentNotFound(uuid)))
     }
 
     async fn unregister_agent(&self, id: String) -> Result<bool, ErrorObjectOwned> {
@@ -319,7 +319,7 @@ impl ForgeApiServer for ForgeRpc {
             .registry
             .get(uuid)
             .await
-            .map_err(|_| to_rpc_error(ForgeError::AgentNotFound(uuid)))?;
+            .map_err(|_| to_rpc_error(MerabError::AgentNotFound(uuid)))?;
         if record.status == AgentStatus::Running {
             self.stop_agent(id).await?;
         }
@@ -327,13 +327,13 @@ impl ForgeApiServer for ForgeRpc {
         self.registry
             .remove(uuid)
             .await
-            .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))?;
+            .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
         {
             let db = self.db.lock().await;
             db.delete_agent_messages(uuid)
-                .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))?;
+                .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
             db.delete_agent(uuid)
-                .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))?;
+                .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
         }
         Ok(true)
     }
@@ -349,16 +349,16 @@ impl ForgeApiServer for ForgeRpc {
         self.registry
             .get(from_id)
             .await
-            .map_err(|_| to_rpc_error(ForgeError::AgentNotFound(from_id)))?;
+            .map_err(|_| to_rpc_error(MerabError::AgentNotFound(from_id)))?;
         self.registry
             .get(to_id)
             .await
-            .map_err(|_| to_rpc_error(ForgeError::AgentNotFound(to_id)))?;
+            .map_err(|_| to_rpc_error(MerabError::AgentNotFound(to_id)))?;
         let msg = Message::new(from_id, Some(to_id), content);
         {
             let db = self.db.lock().await;
             db.insert_message(&msg)
-                .map_err(|e| to_rpc_error(ForgeError::Store(e.to_string())))?;
+                .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))?;
         }
         Ok(msg)
     }
@@ -372,12 +372,12 @@ impl ForgeApiServer for ForgeRpc {
         self.registry
             .get(from_id)
             .await
-            .map_err(|_| to_rpc_error(ForgeError::AgentNotFound(from_id)))?;
+            .map_err(|_| to_rpc_error(MerabError::AgentNotFound(from_id)))?;
         let msg = Message::new(from_id, None, content);
         {
             let db = self.db.lock().await;
             db.insert_message(&msg)
-                .map_err(|e| to_rpc_error(ForgeError::Store(e.to_string())))?;
+                .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))?;
         }
         Ok(msg)
     }
@@ -386,7 +386,7 @@ impl ForgeApiServer for ForgeRpc {
         let uuid = parse_id(&agent_id)?;
         let db = self.db.lock().await;
         db.get_messages_for(uuid)
-            .map_err(|e| to_rpc_error(ForgeError::Store(e.to_string())))
+            .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))
     }
 
     async fn ack_message(&self, message_id: String) -> Result<bool, ErrorObjectOwned> {
@@ -394,9 +394,9 @@ impl ForgeApiServer for ForgeRpc {
         let db = self.db.lock().await;
         let updated = db
             .acknowledge_message(uuid)
-            .map_err(|e| to_rpc_error(ForgeError::Store(e.to_string())))?;
+            .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))?;
         if !updated {
-            return Err(to_rpc_error(ForgeError::MessageNotFound(uuid)));
+            return Err(to_rpc_error(MerabError::MessageNotFound(uuid)));
         }
         Ok(true)
     }
@@ -407,24 +407,24 @@ impl ForgeApiServer for ForgeRpc {
             .registry
             .get(uuid)
             .await
-            .map_err(|_| to_rpc_error(ForgeError::AgentNotFound(uuid)))?;
+            .map_err(|_| to_rpc_error(MerabError::AgentNotFound(uuid)))?;
         if record.manifest.protocol != ProtocolKind::Mcp {
-            return Err(to_rpc_error(ForgeError::InvalidManifest(
+            return Err(to_rpc_error(MerabError::InvalidManifest(
                 "not an MCP agent".into(),
             )));
         }
         if record.status != AgentStatus::Running {
-            return Err(to_rpc_error(ForgeError::NotRunning(uuid)));
+            return Err(to_rpc_error(MerabError::NotRunning(uuid)));
         }
         let client = self.mcp_manager.get_client(uuid).await.ok_or_else(|| {
-            to_rpc_error(ForgeError::Internal(
+            to_rpc_error(MerabError::Internal(
                 "MCP client not found despite agent running".into(),
             ))
         })?;
         client
             .list_tools()
             .await
-            .map_err(|e| to_rpc_error(ForgeError::Transport(e.to_string())))
+            .map_err(|e| to_rpc_error(MerabError::Transport(e.to_string())))
     }
 
     async fn call_tool(
@@ -438,12 +438,12 @@ impl ForgeApiServer for ForgeRpc {
             .registry
             .get(uuid)
             .await
-            .map_err(|_| to_rpc_error(ForgeError::AgentNotFound(uuid)))?;
+            .map_err(|_| to_rpc_error(MerabError::AgentNotFound(uuid)))?;
         if record.status != AgentStatus::Running {
-            return Err(to_rpc_error(ForgeError::NotRunning(uuid)));
+            return Err(to_rpc_error(MerabError::NotRunning(uuid)));
         }
         let client = self.mcp_manager.get_client(uuid).await.ok_or_else(|| {
-            to_rpc_error(ForgeError::Internal(
+            to_rpc_error(MerabError::Internal(
                 "MCP client not found despite agent running".into(),
             ))
         })?;
@@ -451,7 +451,7 @@ impl ForgeApiServer for ForgeRpc {
             serde_json::Value::Object(map) => Some(map),
             serde_json::Value::Null => None,
             _ => {
-                return Err(to_rpc_error(ForgeError::InvalidManifest(
+                return Err(to_rpc_error(MerabError::InvalidManifest(
                     "args must be object".into(),
                 )));
             }
@@ -459,14 +459,14 @@ impl ForgeApiServer for ForgeRpc {
         let result = client
             .call_tool(tool_name, args)
             .await
-            .map_err(|e| to_rpc_error(ForgeError::Transport(e.to_string())))?;
-        serde_json::to_value(&result).map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))
+            .map_err(|e| to_rpc_error(MerabError::Transport(e.to_string())))?;
+        serde_json::to_value(&result).map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))
     }
 
     async fn a2a_discover(&self, url: String) -> Result<AgentCard, ErrorObjectOwned> {
         A2aClient::fetch_card(&url)
             .await
-            .map_err(|e| to_rpc_error(ForgeError::Transport(e.to_string())))
+            .map_err(|e| to_rpc_error(MerabError::Transport(e.to_string())))
     }
 
     async fn a2a_send(
@@ -477,7 +477,7 @@ impl ForgeApiServer for ForgeRpc {
     ) -> Result<TaskResponse, ErrorObjectOwned> {
         A2aClient::send_task(&url, &skill, input)
             .await
-            .map_err(|e| to_rpc_error(ForgeError::Transport(e.to_string())))
+            .map_err(|e| to_rpc_error(MerabError::Transport(e.to_string())))
     }
 
     async fn a2a_get_task(
@@ -487,7 +487,7 @@ impl ForgeApiServer for ForgeRpc {
     ) -> Result<merab_transport::a2a::TaskDetails, ErrorObjectOwned> {
         A2aClient::get_task_status(&url, &task_id)
             .await
-            .map_err(|e| to_rpc_error(ForgeError::Transport(e.to_string())))
+            .map_err(|e| to_rpc_error(MerabError::Transport(e.to_string())))
     }
 
     async fn memory_put(
@@ -498,7 +498,7 @@ impl ForgeApiServer for ForgeRpc {
     ) -> Result<bool, ErrorObjectOwned> {
         let db = self.db.lock().await;
         db.put_memory(&key, &value, None, ttl_seconds)
-            .map_err(|e| to_rpc_error(ForgeError::Store(e.to_string())))?;
+            .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))?;
         let _ = db.cleanup_expired_memory();
         Ok(true)
     }
@@ -506,19 +506,19 @@ impl ForgeApiServer for ForgeRpc {
     async fn memory_get(&self, key: String) -> Result<Option<serde_json::Value>, ErrorObjectOwned> {
         let db = self.db.lock().await;
         db.get_memory(&key)
-            .map_err(|e| to_rpc_error(ForgeError::Store(e.to_string())))
+            .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))
     }
 
     async fn memory_delete(&self, key: String) -> Result<bool, ErrorObjectOwned> {
         let db = self.db.lock().await;
         db.delete_memory(&key)
-            .map_err(|e| to_rpc_error(ForgeError::Store(e.to_string())))
+            .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))
     }
 
     async fn memory_list(&self, prefix: Option<String>) -> Result<Vec<String>, ErrorObjectOwned> {
         let db = self.db.lock().await;
         db.list_memory_keys(prefix.as_deref())
-            .map_err(|e| to_rpc_error(ForgeError::Store(e.to_string())))
+            .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))
     }
 
     async fn get_system_status(&self) -> Result<SystemStatus, ErrorObjectOwned> {
@@ -543,7 +543,7 @@ impl ForgeApiServer for ForgeRpc {
         let db = self.db.lock().await;
         let (hits, total) = db
             .get_proxy_stats()
-            .map_err(|e| to_rpc_error(ForgeError::Store(e.to_string())))?;
+            .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))?;
 
         Ok(SystemStatus {
             agents: agents_stats,
@@ -572,7 +572,7 @@ impl ForgeApiServer for ForgeRpc {
         context_json: String,
     ) -> Result<AiResponse, ErrorObjectOwned> {
         let ctx: Vec<ChatMessage> = serde_json::from_str(&context_json)
-            .map_err(|e| to_rpc_error(ForgeError::InvalidManifest(e.to_string())))?;
+            .map_err(|e| to_rpc_error(MerabError::InvalidManifest(e.to_string())))?;
         ai_methods::handle_ai_chat(&self.config, &self.mcp_manager, message, ctx).await
     }
 

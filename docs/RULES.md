@@ -1,6 +1,6 @@
-# Forge Engineering Standards & Rules
+# Merab Engineering Standards & Rules
 
-Este documento define los estándares de ingeniería para el proyecto Forge. El objetivo es mantener una base de código de **Grado Industrial**, escalable, mantenible y segura.
+Este documento define los estándares de ingeniería para el proyecto Merab. El objetivo es mantener una base de código de **Grado Industrial**, escalable, mantenible y segura.
 
 ## 1. Estructura y Tamaño del Código
 
@@ -16,10 +16,10 @@ Este documento define los estándares de ingeniería para el proyecto Forge. El 
 ## 2. Robustez y Seguridad (Panic Free)
 
 ### Unwrap y Expect
-*   🚫 **PROHIBIDO** usar `.unwrap()` o `.expect()` en código de producción (`forge-daemon`, librerías core).
+*   🚫 **PROHIBIDO** usar `.unwrap()` o `.expect()` en código de producción (`merab-daemon`, librerías core).
     *   *Excepción*: Tests unitarios (`#[test]`) y prototipos rápidos (`examples/`).
 *   ✅ **SIEMPRE** propagar errores usando `Result<T, E>` y el operador `?`.
-*   ✅ Usa `anyhow::Result` para aplicaciones (daemon/cli) y `thiserror` para librerías (`forge-core`).
+*   ✅ Usa `anyhow::Result` para aplicaciones (daemon/cli) y `thiserror` para librerías (`merab-core`).
 
 ### Límites de Recursos
 *   Nunca leas archivos enteros en memoria sin un límite (`take(limit)`).
@@ -47,12 +47,12 @@ Este documento define los estándares de ingeniería para el proyecto Forge. El 
 
 ## 5. Configuración
 
-*   **Cero Hardcoding**: Puertos, timeouts, tamaños de buffer, paths y límites de memoria DEBEN ser configurables via `forge-config`.
+*   **Cero Hardcoding**: Puertos, timeouts, tamaños de buffer, paths y límites de memoria DEBEN ser configurables via `merab-config`.
 *   **Defaults Sensatos**: El sistema debe funcionar "out of the box" con valores por defecto seguros.
 
 ## 6. Testing
 
-*   **Unit Tests**: Cada módulo lógico (`forge-store`, algoritmos) debe tener tests unitarios en el mismo archivo.
+*   **Unit Tests**: Cada módulo lógico (`merab-store`, algoritmos) debe tener tests unitarios en el mismo archivo.
 *   **Integration Tests**: Los flujos críticos (A2A, Proxy) deben tener tests de integración en `tests/`.
 
 ---

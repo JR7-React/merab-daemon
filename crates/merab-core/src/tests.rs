@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::agent::*;
-    use crate::error::ForgeError;
+    use crate::error::MerabError;
     use crate::message::*;
     use crate::task::TaskStatus;
     use uuid::Uuid;
@@ -110,28 +110,28 @@ mod tests {
         assert_ne!(r1.id, r2.id);
     }
 
-    // --- ForgeError codes ---
+    // --- MerabError codes ---
     #[test]
-    fn test_forge_error_codes() {
+    fn test_merab_error_codes() {
         let id = Uuid::new_v4();
-        assert_eq!(ForgeError::AgentNotFound(id).code(), -32001);
-        assert_eq!(ForgeError::AlreadyExists("x".into()).code(), -32002);
-        assert_eq!(ForgeError::NotRunning(id).code(), -32003);
-        assert_eq!(ForgeError::AlreadyRunning(id).code(), -32004);
-        assert_eq!(ForgeError::ToolNotFound("t".into()).code(), -32005);
-        assert_eq!(ForgeError::MessageNotFound(id).code(), -32006);
-        assert_eq!(ForgeError::MemoryKeyNotFound("k".into()).code(), -32007);
-        assert_eq!(ForgeError::PermissionDenied("p".into()).code(), -32008);
-        assert_eq!(ForgeError::InvalidManifest("m".into()).code(), -32602);
-        assert_eq!(ForgeError::TaskFailed("f".into()).code(), -32009);
-        assert_eq!(ForgeError::Store("s".into()).code(), -32010);
-        assert_eq!(ForgeError::Transport("t".into()).code(), -32011);
-        assert_eq!(ForgeError::Internal("i".into()).code(), -32603);
+        assert_eq!(MerabError::AgentNotFound(id).code(), -32001);
+        assert_eq!(MerabError::AlreadyExists("x".into()).code(), -32002);
+        assert_eq!(MerabError::NotRunning(id).code(), -32003);
+        assert_eq!(MerabError::AlreadyRunning(id).code(), -32004);
+        assert_eq!(MerabError::ToolNotFound("t".into()).code(), -32005);
+        assert_eq!(MerabError::MessageNotFound(id).code(), -32006);
+        assert_eq!(MerabError::MemoryKeyNotFound("k".into()).code(), -32007);
+        assert_eq!(MerabError::PermissionDenied("p".into()).code(), -32008);
+        assert_eq!(MerabError::InvalidManifest("m".into()).code(), -32602);
+        assert_eq!(MerabError::TaskFailed("f".into()).code(), -32009);
+        assert_eq!(MerabError::Store("s".into()).code(), -32010);
+        assert_eq!(MerabError::Transport("t".into()).code(), -32011);
+        assert_eq!(MerabError::Internal("i".into()).code(), -32603);
     }
 
     #[test]
-    fn test_forge_error_display() {
-        let err = ForgeError::AgentNotFound(Uuid::nil());
+    fn test_merab_error_display() {
+        let err = MerabError::AgentNotFound(Uuid::nil());
         assert!(err.to_string().contains("agent not found"));
     }
 

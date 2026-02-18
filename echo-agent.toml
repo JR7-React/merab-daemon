@@ -1,7 +1,7 @@
-name = "forge-echo"
+name = "merab-echo"
 version = "0.1.0"
 description = "A simple echo agent for testing MCP integration."
-command = "target/debug/forge-echo.exe"
+command = "target/debug/merab-echo.exe"
 args = []
 protocol = "mcp"
 restart_on_failure = false

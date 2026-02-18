@@ -40,23 +40,23 @@ merab/
 
 | Method | Sprint | Descripción |
 |---|---|---|
-| `forge.ping` | 1.0 | Health check |
-| `forge.registerAgent` | 1.0 | Registrar agente desde manifest |
-| `forge.listAgents` | 1.0 | Listar agentes |
-| `forge.getAgent` | 1.0 | Detalle de un agente |
-| `forge.startAgent` | 1.0 | Iniciar proceso (MCP o Native) |
-| `forge.stopAgent` | 1.0 | Detener proceso |
-| `forge.unregisterAgent` | 1.0 | Eliminar agente |
-| `forge.sendMessage` | 2.2 | Mensaje directo entre agentes |
-| `forge.broadcastMessage` | 2.2 | Broadcast a todos |
-| `forge.getMessages` | 2.2 | Mensajes pendientes |
-| `forge.ackMessage` | 2.2 | Confirmar recepción |
-| `forge.listTools` | 2.3 | Tools de un agente MCP |
-| `forge.callTool` | 2.3 | Invocar tool MCP |
-| `forge.ai.chat` | 4.0 | Chat con LLM (contexto history) |
-| `forge.ai.orchestrate` | 4.1 | Orquestación multi-step autónoma |
-| `forge.ai.plan` | 10.0 | Crear plan de subtasks |
-| `forge.ai.executePlan` | 9.0 | Ejecutar plan con personas |
+| `merab.ping` | 1.0 | Health check |
+| `merab.registerAgent` | 1.0 | Registrar agente desde manifest |
+| `merab.listAgents` | 1.0 | Listar agentes |
+| `merab.getAgent` | 1.0 | Detalle de un agente |
+| `merab.startAgent` | 1.0 | Iniciar proceso (MCP o Native) |
+| `merab.stopAgent` | 1.0 | Detener proceso |
+| `merab.unregisterAgent` | 1.0 | Eliminar agente |
+| `merab.sendMessage` | 2.2 | Mensaje directo entre agentes |
+| `merab.broadcastMessage` | 2.2 | Broadcast a todos |
+| `merab.getMessages` | 2.2 | Mensajes pendientes |
+| `merab.ackMessage` | 2.2 | Confirmar recepción |
+| `merab.listTools` | 2.3 | Tools de un agente MCP |
+| `merab.callTool` | 2.3 | Invocar tool MCP |
+| `merab.ai.chat` | 4.0 | Chat con LLM (contexto history) |
+| `merab.ai.orchestrate` | 4.1 | Orquestación multi-step autónoma |
+| `merab.ai.plan` | 10.0 | Crear plan de subtasks |
+| `merab.ai.executePlan` | 9.0 | Ejecutar plan con personas |
 
 ## Todos los CLI commands actuales
 

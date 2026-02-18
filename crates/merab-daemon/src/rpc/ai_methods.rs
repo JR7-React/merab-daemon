@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use merab_ai::{AiClient, AiClientConfig, AiResponse, ChatMessage};
-use merab_config::ForgeConfig;
+use merab_config::MerabConfig;
 use merab_core::multi_agent_pipeline::Task;
-use merab_core::ForgeError;
+use merab_core::MerabError;
 use jsonrpsee::types::ErrorObjectOwned;
 
 use super::server::to_rpc_error;
@@ -13,7 +13,7 @@ use crate::prompts::{get_persona_prompt, ENGINEER_SYSTEM_PROMPT};
 
 
 /// Build an AiClient from the daemon's config.
-pub fn build_ai_client(config: &ForgeConfig) -> Result<AiClient, ErrorObjectOwned> {
+pub fn build_ai_client(config: &MerabConfig) -> Result<AiClient, ErrorObjectOwned> {
     let proxy_url = format!("http://{}:{}", config.daemon.host, config.proxy.port);
 
     let ai_config = AiClientConfig {
@@ -70,9 +70,9 @@ pub async fn build_dynamic_system_prompt(
     prompt
 }
 
-/// Handle `forge.ai.chat` — single-step LLM call.
+/// Handle `merab.ai.chat` — single-step LLM call.
 pub async fn handle_ai_chat(
-    config: &ForgeConfig,
+    config: &MerabConfig,
     mcp_manager: &Arc<McpManager>,
     message: String,
     context: Vec<ChatMessage>,
@@ -88,10 +88,10 @@ pub async fn handle_ai_chat(
     client
         .chat(messages)
         .await
-        .map_err(|e| to_rpc_error(ForgeError::AiError(e.to_string())))
+        .map_err(|e| to_rpc_error(MerabError::AiError(e.to_string())))
 }
 
-/// Handle `forge.ai.executeTool` — execute a tool by name via McpManager.
+/// Handle `merab.ai.executeTool` — execute a tool by name via McpManager.
 pub async fn handle_execute_tool(
     mcp_manager: &Arc<McpManager>,
     tool_name: String,
@@ -100,7 +100,7 @@ pub async fn handle_execute_tool(
     let mcp_client = mcp_manager
         .find_agent_for_tool(&tool_name)
         .await
-        .ok_or_else(|| to_rpc_error(ForgeError::ToolNotFound(tool_name.clone())))?;
+        .ok_or_else(|| to_rpc_error(MerabError::ToolNotFound(tool_name.clone())))?;
 
     let args = match arguments {
         serde_json::Value::Object(map) => Some(map),
@@ -111,19 +111,19 @@ pub async fn handle_execute_tool(
         .call_tool(tool_name.clone(), args)
         .await
         .map_err(|e| {
-            to_rpc_error(ForgeError::AiError(format!(
+            to_rpc_error(MerabError::AiError(format!(
                 "tool '{}' failed: {}",
                 tool_name, e
             )))
         })?;
 
     serde_json::to_value(&tool_result)
-        .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))
+        .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))
 }
 
-/// Handle `forge.ai.orchestrate` — multi-step orchestration loop.
+/// Handle `merab.ai.orchestrate` — multi-step orchestration loop.
 pub async fn handle_ai_orchestrate(
-    config: &ForgeConfig,
+    config: &MerabConfig,
     mcp_manager: &Arc<McpManager>,
     task: String,
 ) -> Result<AiResponse, ErrorObjectOwned> {
@@ -141,7 +141,7 @@ pub async fn handle_ai_orchestrate(
         let response = client
             .chat(messages.clone())
             .await
-            .map_err(|e| to_rpc_error(ForgeError::AiError(e.to_string())))?;
+            .map_err(|e| to_rpc_error(MerabError::AiError(e.to_string())))?;
 
         if response.tool_call.is_none() {
             tracing::info!(steps = step + 1, "orchestration complete");
@@ -175,14 +175,14 @@ pub async fn handle_ai_orchestrate(
     let final_response = client
         .chat(messages)
         .await
-        .map_err(|e| to_rpc_error(ForgeError::AiError(e.to_string())))?;
+        .map_err(|e| to_rpc_error(MerabError::AiError(e.to_string())))?;
 
     Ok(final_response)
 }
 
 /// Execute a single tool call via MCP and return the result as a string.
 async fn execute_tool_call(
-    config: &ForgeConfig,
+    config: &MerabConfig,
     mcp_manager: &Arc<McpManager>,
     tool_call: &merab_ai::ToolCall,
 ) -> Result<String, ErrorObjectOwned> {
@@ -190,20 +190,20 @@ async fn execute_tool_call(
     if tool_call.name == "core.plan" {
         let task_desc = tool_call.arguments.get("task")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| to_rpc_error(ForgeError::InvalidInput("Missing 'task' argument for core.plan".into())))?;
+            .ok_or_else(|| to_rpc_error(MerabError::InvalidInput("Missing 'task' argument for core.plan".into())))?;
         
         let mut planner = PlannerAgent::new(config);
         let plan = planner.decompose(task_desc).await
-            .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))?;
+            .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
             
         return serde_json::to_string(&plan)
-            .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())));
+            .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())));
     }
 
     let mcp_client = mcp_manager
         .find_agent_for_tool(&tool_call.name)
         .await
-        .ok_or_else(|| to_rpc_error(ForgeError::ToolNotFound(tool_call.name.clone())))?;
+        .ok_or_else(|| to_rpc_error(MerabError::ToolNotFound(tool_call.name.clone())))?;
 
     let args = match &tool_call.arguments {
         serde_json::Value::Object(map) => Some(map.clone()),
@@ -214,38 +214,38 @@ async fn execute_tool_call(
         .call_tool(tool_call.name.clone(), args)
         .await
         .map_err(|e| {
-            to_rpc_error(ForgeError::AiError(format!(
+            to_rpc_error(MerabError::AiError(format!(
                 "tool '{}' failed: {}",
                 tool_call.name, e
             )))
         })?;
 
     serde_json::to_string(&tool_result)
-        .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))
+        .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))
 }
 
-/// Handle `forge.ai.plan` — decompose a task into a plan.
+/// Handle `merab.ai.plan` — decompose a task into a plan.
 pub async fn handle_ai_plan(
-    _config: &ForgeConfig,
+    _config: &MerabConfig,
     _mcp_manager: &Arc<McpManager>,
     task: String,
 ) -> Result<serde_json::Value, ErrorObjectOwned> {
     let mut planner = PlannerAgent::new(_config);
     let plan = planner.decompose(&task).await
-        .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))?;
+        .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
     
     serde_json::to_value(&plan)
-        .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))
+        .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))
 }
 
-/// Handle `forge.ai.executePlan` — execute a plan with persona-based subtasks.
+/// Handle `merab.ai.executePlan` — execute a plan with persona-based subtasks.
 pub async fn handle_ai_execute_plan(
-    config: &ForgeConfig,
+    config: &MerabConfig,
     mcp_manager: &Arc<McpManager>,
     plan_json: String,
 ) -> Result<serde_json::Value, ErrorObjectOwned> {
     let plan: Task = serde_json::from_str(&plan_json)
-        .map_err(|e| to_rpc_error(ForgeError::InvalidInput(format!("Invalid plan JSON: {}", e))))?;
+        .map_err(|e| to_rpc_error(MerabError::InvalidInput(format!("Invalid plan JSON: {}", e))))?;
 
     let max_steps = config.ai.max_orchestration_steps;
     let mut results: Vec<SubtaskResult> = Vec::new();
@@ -296,7 +296,7 @@ pub async fn handle_ai_execute_plan(
             let response = client
                 .chat(messages.clone())
                 .await
-                .map_err(|e| to_rpc_error(ForgeError::AiError(e.to_string())))?;
+                .map_err(|e| to_rpc_error(MerabError::AiError(e.to_string())))?;
 
             if response.tool_call.is_none() {
                 subtask_output = response.content.clone();
@@ -338,7 +338,7 @@ pub async fn handle_ai_execute_plan(
     };
 
     serde_json::to_value(&execution_result)
-        .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))
+        .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))
 }
 
 #[derive(Debug, serde::Serialize)]

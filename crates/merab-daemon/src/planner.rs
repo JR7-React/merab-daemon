@@ -1,5 +1,5 @@
 use merab_ai::{AiClient, AiClientConfig, ChatMessage};
-use merab_config::ForgeConfig;
+use merab_config::MerabConfig;
 use merab_core::multi_agent_pipeline::Task;
 use jsonrpsee::types::ErrorObjectOwned;
 
@@ -66,7 +66,7 @@ pub struct PlannerAgent {
 }
 
 impl PlannerAgent {
-    pub fn new(config: &ForgeConfig) -> Self {
+    pub fn new(config: &MerabConfig) -> Self {
          let proxy_url = format!("http://{}:{}", config.daemon.host, config.proxy.port);
          let ai_config = AiClientConfig {
             proxy_url,
@@ -84,7 +84,7 @@ impl PlannerAgent {
         let message = ChatMessage::user(task_description.to_string());
         
         let response = self.client.chat(vec![message]).await
-            .map_err(|e| to_rpc_error(merab_core::ForgeError::AiError(e.to_string())))?;
+            .map_err(|e| to_rpc_error(merab_core::MerabError::AiError(e.to_string())))?;
 
         let content = response.content.trim();
         
@@ -100,7 +100,7 @@ impl PlannerAgent {
         };
 
         let task: Task = serde_json::from_str(cleaned)
-             .map_err(|e| to_rpc_error(merab_core::ForgeError::AiError(format!("Failed to parse planner JSON: {}. Content: {}", e, cleaned))))?;
+             .map_err(|e| to_rpc_error(merab_core::MerabError::AiError(format!("Failed to parse planner JSON: {}. Content: {}", e, cleaned))))?;
              
         // Ensure IDs are generated if LLM was lazy (though instruct said generate)
         // Ideally we trust LLM or regenerate IDs here. For now, trust LLM.

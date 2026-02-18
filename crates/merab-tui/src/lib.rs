@@ -164,7 +164,7 @@ fn ui(f: &mut ratatui::Frame, app: &TuiApp) {
 
     let header_line = Line::from(vec![
         Span::styled(" \u{2692} ", Style::default().fg(Color::Rgb(204, 0, 0))),
-        Span::styled("FORGE", Style::default().fg(Color::Rgb(204, 0, 0))),
+        Span::styled("MERAB", Style::default().fg(Color::Rgb(204, 0, 0))),
         Span::styled(
             format!(" v{} | Uptime: {}s | [Q] Quit", version, uptime),
             Style::default().fg(Color::White),
@@ -244,7 +244,7 @@ fn ui(f: &mut ratatui::Frame, app: &TuiApp) {
     let footer = Block::default().borders(Borders::ALL);
     let footer_line = Line::from(vec![
         Span::styled(
-            " \u{2692} Forge Agent Runtime \u{2014} ",
+            " \u{2692} Merab Agent Runtime \u{2014} ",
             Style::default().fg(Color::Rgb(204, 0, 0)),
         ),
         Span::styled(

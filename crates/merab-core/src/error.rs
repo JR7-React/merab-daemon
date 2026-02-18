@@ -2,7 +2,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 #[derive(Debug, Error)]
-pub enum ForgeError {
+pub enum MerabError {
     #[error("agent not found: {0}")]
     AgentNotFound(Uuid),
 
@@ -52,25 +52,25 @@ pub enum ForgeError {
     Other(#[from] anyhow::Error),
 }
 
-impl ForgeError {
+impl MerabError {
     pub fn code(&self) -> i32 {
         match self {
-            ForgeError::AgentNotFound(_) => -32001,
-            ForgeError::AlreadyExists(_) => -32002,
-            ForgeError::NotRunning(_) => -32003,
-            ForgeError::AlreadyRunning(_) => -32004,
-            ForgeError::ToolNotFound(_) => -32005,
-            ForgeError::MessageNotFound(_) => -32006,
-            ForgeError::MemoryKeyNotFound(_) => -32007,
-            ForgeError::PermissionDenied(_) => -32008,
-            ForgeError::InvalidManifest(_) => -32602, // Invalid params
-            ForgeError::InvalidInput(_) => -32602,    // Invalid params
-            ForgeError::TaskFailed(_) => -32009,
-            ForgeError::Store(_) => -32010,
-            ForgeError::Transport(_) => -32011,
-            ForgeError::AiError(_) => -32012,
-            ForgeError::Internal(_) => -32603, // Internal error
-            ForgeError::Other(_) => -32000,    // Generic
+            MerabError::AgentNotFound(_) => -32001,
+            MerabError::AlreadyExists(_) => -32002,
+            MerabError::NotRunning(_) => -32003,
+            MerabError::AlreadyRunning(_) => -32004,
+            MerabError::ToolNotFound(_) => -32005,
+            MerabError::MessageNotFound(_) => -32006,
+            MerabError::MemoryKeyNotFound(_) => -32007,
+            MerabError::PermissionDenied(_) => -32008,
+            MerabError::InvalidManifest(_) => -32602, // Invalid params
+            MerabError::InvalidInput(_) => -32602,    // Invalid params
+            MerabError::TaskFailed(_) => -32009,
+            MerabError::Store(_) => -32010,
+            MerabError::Transport(_) => -32011,
+            MerabError::AiError(_) => -32012,
+            MerabError::Internal(_) => -32603, // Internal error
+            MerabError::Other(_) => -32000,    // Generic
         }
     }
 }

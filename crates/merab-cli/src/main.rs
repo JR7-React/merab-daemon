@@ -11,7 +11,7 @@ use clap::{Parser, Subcommand};
 
 use merab_core::AgentManifest;
 
-use client::ForgeClient;
+use client::MerabClient;
 
 #[derive(Parser)]
 #[command(name = "merab", version, about = "Merab - AI Agent Runtime Engine")]
@@ -26,7 +26,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Initialize Forge: start daemon and register built-in agents
+    /// Initialize Merab: start daemon and register built-in agents
     Init,
     /// Health check — returns "pong"
     Ping,
@@ -118,7 +118,7 @@ enum Commands {
     Memory(MemoryCommands),
     /// Monitor the system in real-time (TUI)
     Monitor,
-    /// Chat with Forge AI
+    /// Chat with Merab AI
     Chat,
     #[command(about = "Ask AI to answer a question or execute a task")]
     Ask {
@@ -162,7 +162,7 @@ enum MemoryCommands {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    let client = ForgeClient::new(&cli.url)?;
+    let client = MerabClient::new(&cli.url)?;
 
     // No subcommand = enter chat (auto-bootstrap daemon + agents)
     let command = match cli.command {
@@ -175,7 +175,7 @@ async fn main() -> Result<()> {
             println!("Merab Init");
             println!("===========");
             
-            let client = ForgeClient::new(&cli.url)?;
+            let client = MerabClient::new(&cli.url)?;
             
             // 1. Check if daemon is running
             match client.ping().await {

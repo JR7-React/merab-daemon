@@ -4,7 +4,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct ForgeConfig {
+pub struct MerabConfig {
     pub daemon: DaemonConfig,
     pub proxy: ProxyConfig,
     pub sandbox: SandboxConfig,
@@ -58,7 +58,7 @@ impl AiConfig {
     }
 }
 
-impl Default for ForgeConfig {
+impl Default for MerabConfig {
     fn default() -> Self {
         let mut personas = HashMap::new();
         personas.insert(
@@ -117,7 +117,7 @@ impl Default for ForgeConfig {
     }
 }
 
-impl ForgeConfig {
+impl MerabConfig {
     pub fn load() -> Result<Self> {
         let mut builder = Config::builder();
 

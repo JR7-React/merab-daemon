@@ -6,7 +6,7 @@ pub mod stats;
 pub mod task;
 
 pub use agent::*;
-pub use error::ForgeError;
+pub use error::MerabError;
 pub use message::*;
 pub use permission::*;
 pub use stats::*;

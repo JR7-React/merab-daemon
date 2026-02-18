@@ -7,14 +7,14 @@ use jsonrpsee::server::Server;
 use tokio::sync::Mutex;
 use tracing_subscriber::EnvFilter;
 
-use merab_config::ForgeConfig;
+use merab_config::MerabConfig;
 use merab_core::AgentStatus;
 use merab_daemon::a2a_server::{A2AContext, start_a2a_server};
 use merab_daemon::mcp_manager::McpManager;
 use merab_daemon::process::is_process_alive;
 use merab_daemon::proxy::{ProxyContext, start_proxy_server};
 use merab_daemon::registry::AgentRegistry;
-use merab_daemon::rpc::{ForgeApiServer, ForgeRpc};
+use merab_daemon::rpc::{MerabApiServer, MerabRpc};
 use merab_daemon::supervisor::ProcessSupervisor;
 use merab_store::Database;
 
@@ -30,9 +30,9 @@ async fn main() -> Result<()> {
         .init();
 
     // Load configuration
-    let config = Arc::new(ForgeConfig::load().unwrap_or_else(|e| {
+    let config = Arc::new(MerabConfig::load().unwrap_or_else(|e| {
         tracing::warn!("Failed to load config, using defaults: {}", e);
-        ForgeConfig::default()
+        MerabConfig::default()
     }));
     tracing::info!("Configuration loaded: {:?}", config);
 
@@ -102,7 +102,7 @@ async fn main() -> Result<()> {
         });
     }
 
-    let rpc = ForgeRpc {
+    let rpc = MerabRpc {
         registry: registry.clone(),
         db,
         supervisor: supervisor.clone(),

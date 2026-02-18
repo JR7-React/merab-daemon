@@ -16,7 +16,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
     Terminal,
 };
-use crate::client::ForgeClient;
+use crate::client::MerabClient;
 use crate::git_utils::{self, GitFileStat};
 use ratatui::widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState};
 
@@ -55,7 +55,7 @@ fn restore_console_mouse_selection() {
 #[cfg(not(windows))]
 fn restore_console_mouse_selection() {}
 
-pub async fn start_chat_session(client: &ForgeClient) -> anyhow::Result<()> {
+pub async fn start_chat_session(client: &MerabClient) -> anyhow::Result<()> {
     // Show splash briefly before entering alternate screen
     print_splash()?;
 
@@ -163,7 +163,7 @@ fn print_splash() -> anyhow::Result<()> {
 
 async fn run_app(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    client: &ForgeClient,
+    client: &MerabClient,
     context: &mut Vec<ChatMessage>,
     messages: &mut Vec<ChatMessage>,
     input: &mut String,
@@ -557,7 +557,7 @@ fn render_status_bar(f: &mut ratatui::Frame, area: Rect, model: &str) {
 }
 
 async fn process_message(
-    client: &ForgeClient,
+    client: &MerabClient,
     context: &mut Vec<ChatMessage>,
     input: &str,
 ) -> anyhow::Result<(String, usize)> {

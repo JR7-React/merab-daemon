@@ -1,7 +1,7 @@
-name = "forge-fs"
+name = "merab-fs"
 version = "0.1.0"
 description = "FileSystem Agent (list, read, write, search)"
-command = "target/debug/forge-fs.exe"
+command = "target/debug/merab-fs.exe"
 args = []
 protocol = "mcp"
 restart_on_failure = false

@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use merab_core::{AgentManifest, AgentStatus, AgentSummary, ProtocolKind};
 
-use crate::client::ForgeClient;
+use crate::client::MerabClient;
 
 const BUILT_IN_AGENTS: &[(&str, &str, &str)] = &[
     ("merab-fs", "merab-fs.exe", "FileSystem agent (read, write, list, search)"),
@@ -17,8 +17,8 @@ fn bin_dir() -> Result<PathBuf> {
     Ok(exe.parent().unwrap_or(std::path::Path::new(".")).to_path_buf())
 }
 
-pub async fn ensure_ready(url: &str) -> Result<ForgeClient> {
-    let client = ForgeClient::new(url)?;
+pub async fn ensure_ready(url: &str) -> Result<MerabClient> {
+    let client = MerabClient::new(url)?;
 
     if client.ping().await.is_err() {
         eprintln!("Starting forge daemon...");
@@ -36,7 +36,7 @@ pub fn init_daemon() -> Result<()> {
     start_daemon()
 }
 
-pub async fn wait_for_daemon(client: &ForgeClient) -> Result<()> {
+pub async fn wait_for_daemon(client: &MerabClient) -> Result<()> {
     for _ in 0..30 {
         tokio::time::sleep(Duration::from_millis(200)).await;
         if client.ping().await.is_ok() {
@@ -46,7 +46,7 @@ pub async fn wait_for_daemon(client: &ForgeClient) -> Result<()> {
     anyhow::bail!("daemon did not start within 6 seconds")
 }
 
-pub async fn init_agents(client: &ForgeClient) -> Result<Vec<AgentSummary>> {
+pub async fn init_agents(client: &MerabClient) -> Result<Vec<AgentSummary>> {
     ensure_agents(client).await?;
     let agents = client.list_agents().await.unwrap_or_default();
     Ok(agents)
@@ -86,7 +86,7 @@ fn start_daemon() -> Result<()> {
     Ok(())
 }
 
-async fn ensure_agents(client: &ForgeClient) -> Result<()> {
+async fn ensure_agents(client: &MerabClient) -> Result<()> {
     let agents = client.list_agents().await.unwrap_or_default();
     let bin = bin_dir()?;
 

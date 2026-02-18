@@ -1,7 +1,7 @@
 
-/// Handle `forge.ai.plan` — decompose a task into a plan.
+/// Handle `merab.ai.plan` — decompose a task into a plan.
 pub async fn handle_ai_plan(
-    _config: &ForgeConfig,
+    _config: &MerabConfig,
     _mcp_manager: &Arc<McpManager>,
     task: String,
 ) -> Result<serde_json::Value, ErrorObjectOwned> {
@@ -11,5 +11,5 @@ pub async fn handle_ai_plan(
     let plan = planner.decompose(&task);
     
     serde_json::to_value(&plan)
-        .map_err(|e| to_rpc_error(ForgeError::Internal(e.to_string())))
+        .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))
 }

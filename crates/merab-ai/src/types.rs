@@ -1,3 +1,4 @@
+use merab_core::artifact::ArtifactLog;
 use serde::{Deserialize, Serialize};
 
 /// Role in a chat conversation.
@@ -91,4 +92,6 @@ pub struct AiResponse {
     pub content: String,
     pub model: Option<String>,
     pub tool_call: Option<ToolCall>,
+    #[serde(default)]
+    pub artifacts: Option<ArtifactLog>,
 }

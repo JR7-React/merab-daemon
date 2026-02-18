@@ -7,6 +7,7 @@ use merab_core::MerabError;
 use jsonrpsee::types::ErrorObjectOwned;
 
 use super::server::to_rpc_error;
+use crate::artifacts::ArtifactTracker;
 use crate::mcp_manager::McpManager;
 use crate::planner::PlannerAgent;
 use crate::prompts::{get_persona_prompt, ENGINEER_SYSTEM_PROMPT};
@@ -152,7 +153,9 @@ pub async fn handle_ai_orchestrate(
     let plan_json = serde_json::to_string(&plan)
         .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
 
-    let result = handle_ai_execute_plan(config, mcp_manager, plan_json).await?;
+    let tracker = ArtifactTracker::new();
+    let result = handle_ai_execute_plan(config, mcp_manager, plan_json, Some(&tracker)).await?;
+    let artifacts = tracker.finish();
 
     tracing::info!("[Pipeline] Completado");
 
@@ -162,6 +165,7 @@ pub async fn handle_ai_orchestrate(
         content,
         model: Some(config.ai.model.clone()),
         tool_call: None,
+        artifacts: Some(artifacts),
     })
 }
 
@@ -201,7 +205,7 @@ async fn handle_ai_chat_loop(
 
         messages.push(ChatMessage::assistant(&response.content));
 
-        let tool_result_str = execute_tool_call(config, mcp_manager, &tool_call).await?;
+        let tool_result_str = execute_tool_call(config, mcp_manager, &tool_call, None).await?;
 
         messages.push(ChatMessage::user(format!(
             "Tool '{}' returned:\n{}",
@@ -258,17 +262,18 @@ async fn execute_tool_call(
     config: &MerabConfig,
     mcp_manager: &Arc<McpManager>,
     tool_call: &merab_ai::ToolCall,
+    tracker: Option<&ArtifactTracker>,
 ) -> Result<String, ErrorObjectOwned> {
     // Handle Internal Tools
     if tool_call.name == "core.plan" {
         let task_desc = tool_call.arguments.get("task")
             .and_then(|v| v.as_str())
             .ok_or_else(|| to_rpc_error(MerabError::InvalidInput("Missing 'task' argument for core.plan".into())))?;
-        
+
         let mut planner = PlannerAgent::new(config);
         let plan = planner.decompose(task_desc).await
             .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
-            
+
         return serde_json::to_string(&plan)
             .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())));
     }
@@ -293,7 +298,14 @@ async fn execute_tool_call(
             )))
         })?;
 
-    serde_json::to_string(&tool_result)
+    let result_value = serde_json::to_value(&tool_result)
+        .unwrap_or(serde_json::Value::Null);
+
+    if let Some(t) = tracker {
+        t.record_tool_result(&tool_call.name, &tool_call.arguments, &result_value);
+    }
+
+    serde_json::to_string(&result_value)
         .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))
 }
 
@@ -316,6 +328,7 @@ pub async fn handle_ai_execute_plan(
     config: &MerabConfig,
     mcp_manager: &Arc<McpManager>,
     plan_json: String,
+    tracker: Option<&ArtifactTracker>,
 ) -> Result<serde_json::Value, ErrorObjectOwned> {
     let plan: Task = serde_json::from_str(&plan_json)
         .map_err(|e| to_rpc_error(MerabError::InvalidInput(format!("Invalid plan JSON: {}", e))))?;
@@ -379,7 +392,7 @@ pub async fn handle_ai_execute_plan(
             let tool_call = response.tool_call.clone().unwrap();
             messages.push(ChatMessage::assistant(&response.content));
 
-            let tool_result = execute_tool_call(config, mcp_manager, &tool_call).await?;
+            let tool_result = execute_tool_call(config, mcp_manager, &tool_call, tracker).await?;
             messages.push(ChatMessage::user(format!(
                 "Tool '{}' returned:\n{}",
                 tool_call.name, tool_result

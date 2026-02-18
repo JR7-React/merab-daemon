@@ -593,6 +593,6 @@ impl MerabApiServer for MerabRpc {
     }
 
     async fn ai_execute_plan(&self, plan_json: String) -> Result<serde_json::Value, ErrorObjectOwned> {
-        ai_methods::handle_ai_execute_plan(&self.config, &self.mcp_manager, plan_json).await
+        ai_methods::handle_ai_execute_plan(&self.config, &self.mcp_manager, plan_json, None).await
     }
 }

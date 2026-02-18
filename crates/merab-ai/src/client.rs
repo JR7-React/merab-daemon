@@ -116,6 +116,7 @@ impl AiClient {
             content,
             model: resp.model,
             tool_call,
+            artifacts: None,
         })
     }
 

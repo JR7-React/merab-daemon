@@ -396,6 +396,9 @@ async fn main() -> Result<()> {
             match ready_client.ai_orchestrate(&question).await {
                 Ok(resp) => {
                     println!("{}", resp.content);
+                    if let Some(artifacts) = &resp.artifacts {
+                        print_artifact_summary(artifacts);
+                    }
                 }
                 Err(e) => eprintln!("Error: {}", e),
             }
@@ -423,4 +426,44 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn print_artifact_summary(artifacts: &merab_core::artifact::ArtifactLog) {
+    if artifacts.files_created.is_empty()
+        && artifacts.files_modified.is_empty()
+        && artifacts.commands.is_empty()
+    {
+        return;
+    }
+
+    println!("\n{}", "─".repeat(45));
+    println!(" Resumen de cambios");
+    println!("{}", "─".repeat(45));
+
+    if !artifacts.files_created.is_empty() {
+        println!(" Creados:");
+        for f in &artifacts.files_created {
+            println!("   + {}", f);
+        }
+        println!();
+    }
+
+    if !artifacts.files_modified.is_empty() {
+        println!(" Modificados:");
+        for f in &artifacts.files_modified {
+            println!("   ~ {}", f);
+        }
+        println!();
+    }
+
+    if !artifacts.commands.is_empty() {
+        println!(" Comandos ejecutados:");
+        for cmd in &artifacts.commands {
+            let status = if cmd.success { "OK" } else { "FAIL" };
+            println!("   {}  ->  [{}]", cmd.command, status);
+        }
+        println!();
+    }
+
+    println!("{}", "─".repeat(45));
 }

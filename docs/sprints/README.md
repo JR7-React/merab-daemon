@@ -19,6 +19,16 @@ Documentación detallada de cada sprint para continuidad del desarrollo.
 | 9.0 | Multi-Agent Pipeline — Personas, executePlan | completado | [sprint-9.0](sprint-9.0-multi-agent.md) |
 | 10.0 | Planner LLM — Intelligent task decomposition | completado | [sprint-10.0](sprint-10.0-planner.md) |
 
+## Sprints planificados
+
+| Sprint | Descripción | Estado | Plan |
+|---|---|---|---|
+| 11 | Auto-Pipeline — `ask` usa Plan+Execute automáticamente | pendiente | [plan](../../plans/sprint-11-auto-pipeline.md) |
+| 12 | Artefactos — rastreo de archivos y comandos ejecutados | pendiente | [plan](../../plans/sprint-12-artifacts.md) |
+| 13 | Contexto de Proyecto — agentes conocen el proyecto | pendiente | [plan](../../plans/sprint-13-project-context.md) |
+| 14 | Ejecución Paralela — DAG de subtasks, tokio::spawn | pendiente | [plan](../../plans/sprint-14-parallel-execution.md) |
+| 15 | Memoria de Sesión — `merab continue` retoma trabajo | pendiente | [plan](../../plans/sprint-15-session-memory.md) |
+
 ## Estructura del proyecto
 
 ```

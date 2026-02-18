@@ -10,6 +10,7 @@ use jsonrpsee::types::ErrorObjectOwned;
 use tokio::sync::Mutex;
 
 use crate::artifacts::ArtifactTracker;
+use crate::events::EventSink;
 use crate::mcp_manager::McpManager;
 use crate::planner::PlannerAgent;
 use crate::prompts::get_persona_prompt;
@@ -41,6 +42,7 @@ pub async fn execute_plan_dag(
     db: &Arc<Mutex<Database>>,
     plan: &Task,
     tracker: Option<ArtifactTracker>,
+    event_sink: Option<EventSink>,
 ) -> Result<Vec<SubtaskResult>, ErrorObjectOwned> {
     let max_parallel = config.ai.max_parallel_tasks as usize;
     let mut completed: HashMap<String, SubtaskResult> = HashMap::new();
@@ -93,8 +95,9 @@ pub async fn execute_plan_dag(
                 let subtask = subtask.clone();
                 let dep_ctx = build_dep_context(&completed, &subtask.depends_on);
                 let trk = tracker.clone();
+                let sink = event_sink.clone();
                 tokio::spawn(async move {
-                    execute_subtask(cfg, mcp, db, subtask, dep_ctx, trk).await
+                    execute_subtask(cfg, mcp, db, subtask, dep_ctx, trk, sink).await
                 })
             })
             .collect();
@@ -126,11 +129,16 @@ async fn execute_subtask(
     subtask: Task,
     dep_context: String,
     tracker: Option<ArtifactTracker>,
+    event_sink: Option<EventSink>,
 ) -> Result<SubtaskResult, ErrorObjectOwned> {
     let max_steps = config.ai.max_orchestration_steps;
     let persona_prompt = get_persona_prompt(subtask.persona);
     let dynamic_prompt = build_dynamic_system_prompt(persona_prompt, &mcp_manager, &db).await;
     let persona_model = config.ai.get_model_for_persona(subtask.persona.as_str());
+
+    if let Some(ref sink) = event_sink {
+        sink.emit_subtask_start(subtask.persona.as_str(), &subtask.description);
+    }
 
     tracing::info!(
         id = %subtask.id,
@@ -175,11 +183,19 @@ async fn execute_subtask(
         let tool_call = response.tool_call.clone().unwrap();
         messages.push(ChatMessage::assistant(&response.content));
 
+        if let Some(ref sink) = event_sink {
+            sink.emit_step(subtask.persona.as_str(), &format!("Executing tool: {}", tool_call.name));
+        }
+
         let result = execute_tool_call(&config, &mcp_manager, &tool_call, tracker.as_ref()).await?;
         messages.push(ChatMessage::user(format!(
             "Tool '{}' returned:\n{}",
             tool_call.name, result
         )));
+    }
+
+    if let Some(ref sink) = event_sink {
+        sink.emit_subtask_done(subtask.persona.as_str(), &subtask.description);
     }
 
     Ok(SubtaskResult {

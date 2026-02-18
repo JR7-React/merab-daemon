@@ -209,10 +209,11 @@ impl MerabClient {
         Ok(result)
     }
 
-    pub async fn ai_orchestrate(&self, task: &str) -> Result<AiResponse> {
+    pub async fn ai_orchestrate_stream(&self, task: &str, event_file: &str) -> Result<AiResponse> {
         let mut params = ObjectParams::new();
         params.insert("task", task)?;
-        let result: AiResponse = self.client.request("merab.ai.orchestrate", params).await?;
+        params.insert("event_file", event_file)?;
+        let result: AiResponse = self.client.request("merab.ai.orchestrate.stream", params).await?;
         Ok(result)
     }
 

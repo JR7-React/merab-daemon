@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod artifact;
 pub mod error;
+pub mod events;
 pub mod message;
 pub mod permission;
 pub mod session;
@@ -9,6 +10,7 @@ pub mod task;
 
 pub use agent::*;
 pub use artifact::{ArtifactLog, CommandResult};
+pub use events::{EventKind, ProgressEvent};
 pub use session::{Session, SessionStatus};
 pub use error::MerabError;
 pub use message::*;

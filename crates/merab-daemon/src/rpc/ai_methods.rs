@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use chrono::Utc;
@@ -15,6 +16,7 @@ use tokio::sync::Mutex;
 use super::server::to_rpc_error;
 use crate::artifacts::ArtifactTracker;
 use crate::dag::{execute_plan_dag, execute_tool_call, ExecutionResult};
+use crate::events::EventSink;
 use crate::mcp_manager::McpManager;
 use crate::planner::PlannerAgent;
 use crate::prompts::ENGINEER_SYSTEM_PROMPT;
@@ -149,9 +151,18 @@ pub async fn handle_ai_orchestrate(
     mcp_manager: &Arc<McpManager>,
     db: &Arc<Mutex<Database>>,
     task: String,
+    event_file: Option<PathBuf>,
 ) -> Result<AiResponse, ErrorObjectOwned> {
     let created_at = Utc::now();
 
+    let event_sink = match &event_file {
+        Some(path) => EventSink::from_file(path).map_err(|e| {
+            to_rpc_error(MerabError::Internal(format!("Failed to create event file: {}", e)))
+        })?,
+        None => EventSink::new(),
+    };
+
+    event_sink.emit_planning();
     tracing::info!("[Planner] Descomponiendo tarea...");
     let mut planner = PlannerAgent::new(config);
 
@@ -159,15 +170,18 @@ pub async fn handle_ai_orchestrate(
         Ok(p) => p,
         Err(e) => {
             tracing::warn!(error = %e, "[Planner] Falló, usando loop simple como fallback");
+            event_sink.emit_error("Planner failed, using fallback");
             return handle_ai_chat_loop(config, mcp_manager, db, task).await;
         }
     };
 
     if plan.subtasks.is_empty() {
         tracing::warn!("[Planner] Plan sin subtasks, usando loop simple como fallback");
+        event_sink.emit_error("Empty plan, using fallback");
         return handle_ai_chat_loop(config, mcp_manager, db, task).await;
     }
 
+    event_sink.emit_plan_ready(plan.subtasks.len());
     tracing::info!(
         subtasks = plan.subtasks.len(),
         description = %plan.description,
@@ -178,9 +192,10 @@ pub async fn handle_ai_orchestrate(
         .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
 
     let tracker = ArtifactTracker::new();
-    let result = handle_ai_execute_plan(config, mcp_manager, db, plan_json, Some(&tracker)).await?;
+    let result = handle_ai_execute_plan_internal(config, mcp_manager, db, plan_json, Some(&tracker), Some(event_sink.clone())).await?;
     let artifacts = tracker.finish();
 
+    event_sink.emit_done();
     tracing::info!("[Pipeline] Completado");
 
     let content = format_execution_result(&result);
@@ -337,11 +352,22 @@ pub async fn handle_ai_execute_plan(
     plan_json: String,
     tracker: Option<&ArtifactTracker>,
 ) -> Result<serde_json::Value, ErrorObjectOwned> {
+    handle_ai_execute_plan_internal(config, mcp_manager, db, plan_json, tracker, None).await
+}
+
+async fn handle_ai_execute_plan_internal(
+    config: &MerabConfig,
+    mcp_manager: &Arc<McpManager>,
+    db: &Arc<Mutex<Database>>,
+    plan_json: String,
+    tracker: Option<&ArtifactTracker>,
+    event_sink: Option<EventSink>,
+) -> Result<serde_json::Value, ErrorObjectOwned> {
     let plan: Task = serde_json::from_str(&plan_json)
         .map_err(|e| to_rpc_error(MerabError::InvalidInput(format!("Invalid plan JSON: {}", e))))?;
 
     let config_arc = Arc::new(config.clone());
-    let results = execute_plan_dag(&config_arc, mcp_manager, db, &plan, tracker.cloned()).await?;
+    let results = execute_plan_dag(&config_arc, mcp_manager, db, &plan, tracker.cloned(), event_sink).await?;
 
     let execution_result = ExecutionResult {
         plan_id: plan.id,

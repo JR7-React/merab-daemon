@@ -3,8 +3,10 @@ mod client;
 mod git_utils;
 mod chat_ui;
 mod project_context;
+mod event_tail;
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -410,9 +412,22 @@ async fn main() -> Result<()> {
 
         Commands::Ask { question } => {
             let ready_client = bootstrap::ensure_ready(&cli.url).await?;
-            match ready_client.ai_orchestrate(&question).await {
+            
+            let event_file = std::env::temp_dir().join(format!("merab-events-{}.jsonl", std::process::id()));
+            let event_file_str = event_file.to_string_lossy().to_string();
+            
+            let running = Arc::new(AtomicBool::new(true));
+            let tail_handle = event_tail::start_event_tail(&event_file, running.clone());
+            
+            let result = ready_client.ai_orchestrate_stream(&question, &event_file_str).await;
+            
+            running.store(false, Ordering::Relaxed);
+            let _ = tail_handle.join();
+            
+            let _ = std::fs::remove_file(&event_file);
+            
+            match result {
                 Ok(resp) => {
-                    println!("{}", resp.content);
                     if let Some(artifacts) = &resp.artifacts {
                         print_artifact_summary(artifacts);
                     }
@@ -541,9 +556,22 @@ async fn main() -> Result<()> {
             ));
 
             println!("Enviando contexto al agente...\n");
-            match ready_client.ai_orchestrate(&continuation).await {
+            
+            let event_file = std::env::temp_dir().join(format!("merab-events-{}.jsonl", std::process::id()));
+            let event_file_str = event_file.to_string_lossy().to_string();
+            
+            let running = Arc::new(AtomicBool::new(true));
+            let tail_handle = event_tail::start_event_tail(&event_file, running.clone());
+            
+            let result = ready_client.ai_orchestrate_stream(&continuation, &event_file_str).await;
+            
+            running.store(false, Ordering::Relaxed);
+            let _ = tail_handle.join();
+            
+            let _ = std::fs::remove_file(&event_file);
+            
+            match result {
                 Ok(resp) => {
-                    println!("{}", resp.content);
                     if let Some(artifacts) = &resp.artifacts {
                         print_artifact_summary(artifacts);
                     }

@@ -41,11 +41,20 @@ async fn store_project_context(client: &MerabClient) {
     };
     let ctx = ProjectContext::detect(&cwd);
     let ctx_str = ctx.to_prompt_string();
+    let root_path = cwd.to_string_lossy().to_string();
+
     if let Err(e) = client
         .memory_put("project.context", serde_json::Value::String(ctx_str), None)
         .await
     {
         eprintln!("Warning: failed to store project context: {}", e);
+    }
+
+    if let Err(e) = client
+        .memory_put("project.root_path", serde_json::Value::String(root_path), None)
+        .await
+    {
+        eprintln!("Warning: failed to store project root path: {}", e);
     }
 }
 

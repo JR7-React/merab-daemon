@@ -141,6 +141,19 @@ enum Commands {
 
     #[command(about = "Show detected project context")]
     Context,
+
+    #[command(about = "List recent sessions for the current project")]
+    Sessions {
+        /// Maximum number of sessions to show (default: 10)
+        #[arg(long, default_value = "10")]
+        limit: u32,
+    },
+
+    #[command(about = "Continue from a previous session")]
+    Continue {
+        /// Session ID to resume (default: last session)
+        id: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -432,6 +445,111 @@ async fn main() -> Result<()> {
             let cwd = std::env::current_dir()?;
             let ctx = project_context::ProjectContext::detect(&cwd);
             ctx.display();
+        }
+
+        Commands::Sessions { limit } => {
+            let ready_client = bootstrap::ensure_ready(&cli.url).await?;
+            let project_path = std::env::current_dir()?
+                .to_string_lossy()
+                .to_string();
+            match ready_client.session_list(&project_path, limit).await {
+                Ok(sessions) if sessions.is_empty() => {
+                    println!("No hay sesiones previas para este proyecto.");
+                }
+                Ok(sessions) => {
+                    println!("{:<8} {:<17} {:<12} {}", "ID", "FECHA", "ESTADO", "TAREA");
+                    println!("{}", "─".repeat(80));
+                    for s in sessions {
+                        let short_id = &s.id[..8.min(s.id.len())];
+                        let date = s.display_date();
+                        let status = s.status.to_string();
+                        let task_preview = if s.task.len() > 45 {
+                            format!("{}...", &s.task[..45])
+                        } else {
+                            s.task.clone()
+                        };
+                        println!("{:<8} {:<17} {:<12} {}", short_id, date, status, task_preview);
+                    }
+                }
+                Err(e) => eprintln!("Error: {}", e),
+            }
+        }
+
+        Commands::Continue { id } => {
+            let ready_client = bootstrap::ensure_ready(&cli.url).await?;
+            let project_path = std::env::current_dir()?
+                .to_string_lossy()
+                .to_string();
+
+            // Obtener la sesión (por ID o la última)
+            let session_opt = if let Some(ref session_id) = id {
+                // Buscar por ID en la lista
+                match ready_client.session_list(&project_path, 50).await {
+                    Ok(sessions) => sessions.into_iter().find(|s| s.id.starts_with(session_id.as_str())),
+                    Err(e) => {
+                        eprintln!("Error al buscar sesión: {}", e);
+                        None
+                    }
+                }
+            } else {
+                match ready_client.session_get_last(&project_path).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                        None
+                    }
+                }
+            };
+
+            let session = match session_opt {
+                Some(s) => s,
+                None => {
+                    println!("No hay sesión previa para continuar en este proyecto.");
+                    println!("Usa `merab ask` para iniciar una nueva sesión.");
+                    return Ok(());
+                }
+            };
+
+            println!("Retomando sesión {}", &session.id[..8.min(session.id.len())]);
+            println!("Tarea original: {}", session.task);
+            println!("Fecha: {}", session.display_date());
+            println!("Estado anterior: {}", session.status);
+            println!();
+
+            // Construir prompt de continuación
+            let mut continuation = format!(
+                "Continuando sesión anterior.\n\nLo que se hizo:\n{}\n\n",
+                session.summary
+            );
+
+            if !session.artifacts.files_created.is_empty()
+                || !session.artifacts.files_modified.is_empty()
+            {
+                continuation.push_str("Archivos tocados:\n");
+                for f in &session.artifacts.files_created {
+                    continuation.push_str(&format!("  + {}\n", f));
+                }
+                for f in &session.artifacts.files_modified {
+                    continuation.push_str(&format!("  ~ {}\n", f));
+                }
+                continuation.push('\n');
+            }
+
+            continuation.push_str(&format!(
+                "Tarea pendiente: {}\n\nContinúa desde donde quedamos.",
+                session.task
+            ));
+
+            println!("Enviando contexto al agente...\n");
+            match ready_client.ai_orchestrate(&continuation).await {
+                Ok(resp) => {
+                    println!("{}", resp.content);
+                    if let Some(artifacts) = &resp.artifacts {
+                        print_artifact_summary(artifacts);
+                    }
+                }
+                Err(e) => eprintln!("Error: {}", e),
+            }
         }
     }
 

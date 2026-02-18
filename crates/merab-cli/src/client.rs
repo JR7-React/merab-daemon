@@ -1,6 +1,6 @@
 use anyhow::Result;
 use merab_ai::{AiResponse, ChatMessage};
-use merab_core::{AgentManifest, AgentRecord, AgentSummary, Message};
+use merab_core::{AgentManifest, AgentRecord, AgentSummary, Message, Session};
 use merab_transport::a2a::{AgentCard, TaskResponse};
 use jsonrpsee::core::client::ClientT;
 use jsonrpsee::core::params::ObjectParams;
@@ -242,6 +242,22 @@ impl MerabClient {
         let mut params = ObjectParams::new();
         params.insert("plan_json", plan_json)?;
         let result: serde_json::Value = self.client.request("merab.ai.executePlan", params).await?;
+        Ok(result)
+    }
+
+    pub async fn session_get_last(&self, project_path: &str) -> Result<Option<Session>> {
+        let mut params = ObjectParams::new();
+        params.insert("project_path", project_path)?;
+        let result: Option<Session> =
+            self.client.request("merab.session.getLast", params).await?;
+        Ok(result)
+    }
+
+    pub async fn session_list(&self, project_path: &str, limit: u32) -> Result<Vec<Session>> {
+        let mut params = ObjectParams::new();
+        params.insert("project_path", project_path)?;
+        params.insert("limit", limit)?;
+        let result: Vec<Session> = self.client.request("merab.session.list", params).await?;
         Ok(result)
     }
 }

@@ -5,7 +5,7 @@ use merab_ai::{AiResponse, ChatMessage};
 use merab_config::MerabConfig;
 use merab_core::{
     AgentManifest, AgentRecord, AgentStats, AgentStatus, AgentSummary, AiInfo, MerabError, Message,
-    NodeInfo, ProtocolKind, ProxyStats, SystemStatus,
+    NodeInfo, ProtocolKind, ProxyStats, Session, SystemStatus,
 };
 use merab_store::Database;
 use merab_transport::a2a::{A2aClient, AgentCard, TaskResponse};
@@ -140,6 +140,20 @@ pub trait MerabApi {
 
     #[method(name = "merab.ai.executePlan")]
     async fn ai_execute_plan(&self, plan_json: String) -> Result<serde_json::Value, ErrorObjectOwned>;
+
+    // Session methods
+    #[method(name = "merab.session.getLast")]
+    async fn session_get_last(
+        &self,
+        project_path: String,
+    ) -> Result<Option<Session>, ErrorObjectOwned>;
+
+    #[method(name = "merab.session.list")]
+    async fn session_list(
+        &self,
+        project_path: String,
+        limit: u32,
+    ) -> Result<Vec<Session>, ErrorObjectOwned>;
 }
 
 pub struct MerabRpc {
@@ -594,5 +608,24 @@ impl MerabApiServer for MerabRpc {
 
     async fn ai_execute_plan(&self, plan_json: String) -> Result<serde_json::Value, ErrorObjectOwned> {
         ai_methods::handle_ai_execute_plan(&self.config, &self.mcp_manager, &self.db, plan_json, None).await
+    }
+
+    async fn session_get_last(
+        &self,
+        project_path: String,
+    ) -> Result<Option<Session>, ErrorObjectOwned> {
+        let db = self.db.lock().await;
+        db.get_last_session(&project_path)
+            .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))
+    }
+
+    async fn session_list(
+        &self,
+        project_path: String,
+        limit: u32,
+    ) -> Result<Vec<Session>, ErrorObjectOwned> {
+        let db = self.db.lock().await;
+        db.list_sessions(&project_path, limit)
+            .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))
     }
 }

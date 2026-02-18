@@ -55,6 +55,7 @@ mod tests {
                 name: "read_file".to_string(),
                 arguments: serde_json::json!({"path": "/tmp/test.txt"}),
             }),
+            artifacts: None,
         };
         let json = serde_json::to_string(&response).unwrap();
         let parsed: AiResponse = serde_json::from_str(&json).unwrap();

@@ -1,8 +1,12 @@
 use std::sync::Arc;
 
+use chrono::Utc;
+use uuid::Uuid;
+
 use merab_ai::{AiClient, AiClientConfig, AiResponse, ChatMessage};
 use merab_config::MerabConfig;
 use merab_core::multi_agent_pipeline::Task;
+use merab_core::session::{Session, SessionStatus};
 use merab_core::MerabError;
 use merab_store::Database;
 use jsonrpsee::types::ErrorObjectOwned;
@@ -145,6 +149,8 @@ pub async fn handle_ai_orchestrate(
     db: &Arc<Mutex<Database>>,
     task: String,
 ) -> Result<AiResponse, ErrorObjectOwned> {
+    let created_at = Utc::now();
+
     tracing::info!("[Planner] Descomponiendo tarea...");
     let mut planner = PlannerAgent::new(config);
 
@@ -177,6 +183,39 @@ pub async fn handle_ai_orchestrate(
     tracing::info!("[Pipeline] Completado");
 
     let content = format_execution_result(&result);
+
+    // Guardar sesión en SQLite
+    let project_path = {
+        let store = db.lock().await;
+        match store.get_memory("project.root_path") {
+            Ok(Some(serde_json::Value::String(p))) => p,
+            _ => String::from("unknown"),
+        }
+    };
+
+    let summary = if content.len() > 500 {
+        format!("{}...", &content[..500])
+    } else {
+        content.clone()
+    };
+
+    let session = Session {
+        id: Uuid::new_v4().to_string(),
+        project_path,
+        task: task.clone(),
+        summary,
+        artifacts: artifacts.clone(),
+        status: SessionStatus::Completed,
+        created_at,
+        completed_at: Some(Utc::now()),
+    };
+
+    {
+        let store = db.lock().await;
+        if let Err(e) = store.save_session(&session) {
+            tracing::warn!(error = %e, "Failed to save session");
+        }
+    }
 
     Ok(AiResponse {
         content,

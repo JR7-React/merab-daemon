@@ -89,6 +89,20 @@ impl Database {
                 updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
                 expires_at  TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS sessions (
+                id           TEXT PRIMARY KEY,
+                project_path TEXT NOT NULL,
+                task         TEXT NOT NULL,
+                summary      TEXT NOT NULL,
+                artifacts    TEXT NOT NULL,
+                status       TEXT NOT NULL,
+                created_at   TEXT NOT NULL,
+                completed_at TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_sessions_project
+                ON sessions(project_path, created_at DESC);
             ",
         )?;
 

@@ -1,5 +1,6 @@
 mod bootstrap;
 mod client;
+mod git_utils;
 mod chat_ui;
 
 use std::path::PathBuf;

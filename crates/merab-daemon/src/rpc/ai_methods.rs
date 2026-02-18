@@ -121,8 +121,52 @@ pub async fn handle_execute_tool(
         .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))
 }
 
-/// Handle `merab.ai.orchestrate` — multi-step orchestration loop.
+/// Handle `merab.ai.orchestrate` — Auto-Pipeline: Plan → Execute con fallback al loop simple.
 pub async fn handle_ai_orchestrate(
+    config: &MerabConfig,
+    mcp_manager: &Arc<McpManager>,
+    task: String,
+) -> Result<AiResponse, ErrorObjectOwned> {
+    tracing::info!("[Planner] Descomponiendo tarea...");
+    let mut planner = PlannerAgent::new(config);
+
+    let plan = match planner.decompose(&task).await {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(error = %e, "[Planner] Falló, usando loop simple como fallback");
+            return handle_ai_chat_loop(config, mcp_manager, task).await;
+        }
+    };
+
+    if plan.subtasks.is_empty() {
+        tracing::warn!("[Planner] Plan sin subtasks, usando loop simple como fallback");
+        return handle_ai_chat_loop(config, mcp_manager, task).await;
+    }
+
+    tracing::info!(
+        subtasks = plan.subtasks.len(),
+        description = %plan.description,
+        "[Pipeline] Plan generado, ejecutando subtasks"
+    );
+
+    let plan_json = serde_json::to_string(&plan)
+        .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
+
+    let result = handle_ai_execute_plan(config, mcp_manager, plan_json).await?;
+
+    tracing::info!("[Pipeline] Completado");
+
+    let content = format_execution_result(&result);
+
+    Ok(AiResponse {
+        content,
+        model: Some(config.ai.model.clone()),
+        tool_call: None,
+    })
+}
+
+/// Fallback: loop single-LLM con tools. Usado por `merab.ai.chat` y como fallback de orchestrate.
+async fn handle_ai_chat_loop(
     config: &MerabConfig,
     mcp_manager: &Arc<McpManager>,
     task: String,
@@ -136,7 +180,7 @@ pub async fn handle_ai_orchestrate(
     let mut messages: Vec<ChatMessage> = vec![ChatMessage::user(&task)];
 
     for step in 0..max_steps {
-        tracing::info!(step = step, max = max_steps, "orchestration step");
+        tracing::info!(step = step, max = max_steps, "chat loop step");
 
         let response = client
             .chat(messages.clone())
@@ -144,7 +188,7 @@ pub async fn handle_ai_orchestrate(
             .map_err(|e| to_rpc_error(MerabError::AiError(e.to_string())))?;
 
         if response.tool_call.is_none() {
-            tracing::info!(steps = step + 1, "orchestration complete");
+            tracing::info!(steps = step + 1, "chat loop complete");
             return Ok(response);
         }
 
@@ -152,7 +196,7 @@ pub async fn handle_ai_orchestrate(
         tracing::info!(
             step = step,
             tool = %tool_call.name,
-            "orchestrator: executing tool"
+            "chat loop: executing tool"
         );
 
         messages.push(ChatMessage::assistant(&response.content));
@@ -165,7 +209,7 @@ pub async fn handle_ai_orchestrate(
         )));
     }
 
-    tracing::warn!(max_steps = max_steps, "orchestration hit step limit");
+    tracing::warn!(max_steps = max_steps, "chat loop hit step limit");
 
     messages.push(ChatMessage::user(
         "You have reached the maximum number of steps. \
@@ -178,6 +222,35 @@ pub async fn handle_ai_orchestrate(
         .map_err(|e| to_rpc_error(MerabError::AiError(e.to_string())))?;
 
     Ok(final_response)
+}
+
+/// Formatea el resultado de ejecución del pipeline en texto legible.
+fn format_execution_result(result: &serde_json::Value) -> String {
+    let mut output = String::new();
+
+    if let Some(desc) = result.get("plan_description").and_then(|v| v.as_str()) {
+        output.push_str(&format!("## Plan: {}\n\n", desc));
+    }
+
+    if let Some(count) = result.get("subtasks_executed").and_then(|v| v.as_u64()) {
+        output.push_str(&format!("Subtasks completadas: {}\n\n", count));
+    }
+
+    if let Some(results) = result.get("results").and_then(|v| v.as_array()) {
+        for subtask in results {
+            let persona = subtask.get("persona").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let desc = subtask.get("description").and_then(|v| v.as_str()).unwrap_or("");
+            let out = subtask.get("output").and_then(|v| v.as_str()).unwrap_or("");
+
+            output.push_str(&format!("### [{}] {}\n{}\n\n", persona.to_uppercase(), desc, out));
+        }
+    }
+
+    if output.is_empty() {
+        output = "Pipeline completado exitosamente.".to_string();
+    }
+
+    output
 }
 
 /// Execute a single tool call via MCP and return the result as a string.

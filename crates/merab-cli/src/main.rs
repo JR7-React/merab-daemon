@@ -2,6 +2,7 @@ mod bootstrap;
 mod client;
 mod git_utils;
 mod chat_ui;
+mod project_context;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -137,6 +138,9 @@ enum Commands {
         #[arg(index = 1)]
         plan_json: String,
     },
+
+    #[command(about = "Show detected project context")]
+    Context,
 }
 
 #[derive(Subcommand)]
@@ -422,6 +426,12 @@ async fn main() -> Result<()> {
                 }
                 Err(e) => eprintln!("Error: {}", e),
             }
+        }
+
+        Commands::Context => {
+            let cwd = std::env::current_dir()?;
+            let ctx = project_context::ProjectContext::detect(&cwd);
+            ctx.display();
         }
     }
 

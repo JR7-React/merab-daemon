@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use merab_core::{AgentManifest, AgentStatus, AgentSummary, ProtocolKind};
 
 use crate::client::MerabClient;
+use crate::project_context::ProjectContext;
 
 const BUILT_IN_AGENTS: &[(&str, &str, &str)] = &[
     ("merab-fs", "merab-fs.exe", "FileSystem agent (read, write, list, search)"),
@@ -28,8 +29,24 @@ pub async fn ensure_ready(url: &str) -> Result<MerabClient> {
     }
 
     ensure_agents(&client).await?;
+    store_project_context(&client).await;
 
     Ok(client)
+}
+
+async fn store_project_context(client: &MerabClient) {
+    let cwd = match std::env::current_dir() {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let ctx = ProjectContext::detect(&cwd);
+    let ctx_str = ctx.to_prompt_string();
+    if let Err(e) = client
+        .memory_put("project.context", serde_json::Value::String(ctx_str), None)
+        .await
+    {
+        eprintln!("Warning: failed to store project context: {}", e);
+    }
 }
 
 pub fn init_daemon() -> Result<()> {

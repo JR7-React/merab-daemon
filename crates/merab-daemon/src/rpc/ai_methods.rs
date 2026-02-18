@@ -4,7 +4,9 @@ use merab_ai::{AiClient, AiClientConfig, AiResponse, ChatMessage};
 use merab_config::MerabConfig;
 use merab_core::multi_agent_pipeline::Task;
 use merab_core::MerabError;
+use merab_store::Database;
 use jsonrpsee::types::ErrorObjectOwned;
+use tokio::sync::Mutex;
 
 use super::server::to_rpc_error;
 use crate::artifacts::ArtifactTracker;
@@ -28,18 +30,30 @@ pub fn build_ai_client(config: &MerabConfig) -> Result<AiClient, ErrorObjectOwne
     Ok(AiClient::new(ai_config))
 }
 
-/// Build a dynamic system prompt that includes available MCP tools.
+/// Build a dynamic system prompt that includes project context and available MCP tools.
 pub async fn build_dynamic_system_prompt(
     base_prompt: &str,
     mcp_manager: &Arc<McpManager>,
+    db: &Arc<Mutex<Database>>,
 ) -> String {
+    let mut prompt = base_prompt.to_string();
+
+    // Inject project context from shared memory
+    {
+        let store = db.lock().await;
+        if let Ok(Some(serde_json::Value::String(ctx))) = store.get_memory("project.context") {
+            prompt.push_str("\n\n## Project Context\n");
+            prompt.push_str(&ctx);
+        }
+    }
+
     let tools = mcp_manager.get_all_tools().await;
 
     if tools.is_empty() {
-        return base_prompt.to_string();
+        return prompt;
     }
 
-    let mut prompt = format!("{}\n\n## Available Tools\n\n", base_prompt);
+    prompt.push_str("\n\n## Available Tools\n\n");
     prompt.push_str("You can call tools by responding with JSON in this format:\n");
     prompt.push_str(r#"{"tool_call": {"name": "<tool_name>", "arguments": {<args>}}}"#);
     prompt.push_str("\n\nTools:\n");
@@ -75,12 +89,13 @@ pub async fn build_dynamic_system_prompt(
 pub async fn handle_ai_chat(
     config: &MerabConfig,
     mcp_manager: &Arc<McpManager>,
+    db: &Arc<Mutex<Database>>,
     message: String,
     context: Vec<ChatMessage>,
 ) -> Result<AiResponse, ErrorObjectOwned> {
     let mut client = build_ai_client(config)?;
 
-    let dynamic_prompt = build_dynamic_system_prompt(ENGINEER_SYSTEM_PROMPT, mcp_manager).await;
+    let dynamic_prompt = build_dynamic_system_prompt(ENGINEER_SYSTEM_PROMPT, mcp_manager, db).await;
     client.set_system_prompt(dynamic_prompt);
 
     let mut messages = context;
@@ -126,6 +141,7 @@ pub async fn handle_execute_tool(
 pub async fn handle_ai_orchestrate(
     config: &MerabConfig,
     mcp_manager: &Arc<McpManager>,
+    db: &Arc<Mutex<Database>>,
     task: String,
 ) -> Result<AiResponse, ErrorObjectOwned> {
     tracing::info!("[Planner] Descomponiendo tarea...");
@@ -135,13 +151,13 @@ pub async fn handle_ai_orchestrate(
         Ok(p) => p,
         Err(e) => {
             tracing::warn!(error = %e, "[Planner] Falló, usando loop simple como fallback");
-            return handle_ai_chat_loop(config, mcp_manager, task).await;
+            return handle_ai_chat_loop(config, mcp_manager, db, task).await;
         }
     };
 
     if plan.subtasks.is_empty() {
         tracing::warn!("[Planner] Plan sin subtasks, usando loop simple como fallback");
-        return handle_ai_chat_loop(config, mcp_manager, task).await;
+        return handle_ai_chat_loop(config, mcp_manager, db, task).await;
     }
 
     tracing::info!(
@@ -154,7 +170,7 @@ pub async fn handle_ai_orchestrate(
         .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
 
     let tracker = ArtifactTracker::new();
-    let result = handle_ai_execute_plan(config, mcp_manager, plan_json, Some(&tracker)).await?;
+    let result = handle_ai_execute_plan(config, mcp_manager, db, plan_json, Some(&tracker)).await?;
     let artifacts = tracker.finish();
 
     tracing::info!("[Pipeline] Completado");
@@ -173,12 +189,13 @@ pub async fn handle_ai_orchestrate(
 async fn handle_ai_chat_loop(
     config: &MerabConfig,
     mcp_manager: &Arc<McpManager>,
+    db: &Arc<Mutex<Database>>,
     task: String,
 ) -> Result<AiResponse, ErrorObjectOwned> {
     let mut client = build_ai_client(config)?;
     let max_steps = config.ai.max_orchestration_steps;
 
-    let dynamic_prompt = build_dynamic_system_prompt(ENGINEER_SYSTEM_PROMPT, mcp_manager).await;
+    let dynamic_prompt = build_dynamic_system_prompt(ENGINEER_SYSTEM_PROMPT, mcp_manager, db).await;
     client.set_system_prompt(dynamic_prompt);
 
     let mut messages: Vec<ChatMessage> = vec![ChatMessage::user(&task)];
@@ -327,6 +344,7 @@ pub async fn handle_ai_plan(
 pub async fn handle_ai_execute_plan(
     config: &MerabConfig,
     mcp_manager: &Arc<McpManager>,
+    db: &Arc<Mutex<Database>>,
     plan_json: String,
     tracker: Option<&ArtifactTracker>,
 ) -> Result<serde_json::Value, ErrorObjectOwned> {
@@ -346,7 +364,7 @@ pub async fn handle_ai_execute_plan(
         );
 
         let persona_prompt = get_persona_prompt(subtask.persona);
-        let dynamic_prompt = build_dynamic_system_prompt(persona_prompt, mcp_manager).await;
+        let dynamic_prompt = build_dynamic_system_prompt(persona_prompt, mcp_manager, db).await;
         
         let persona_model = config.ai.get_model_for_persona(subtask.persona.as_str());
         tracing::info!(

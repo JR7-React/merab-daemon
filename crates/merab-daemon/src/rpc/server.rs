@@ -573,11 +573,11 @@ impl MerabApiServer for MerabRpc {
     ) -> Result<AiResponse, ErrorObjectOwned> {
         let ctx: Vec<ChatMessage> = serde_json::from_str(&context_json)
             .map_err(|e| to_rpc_error(MerabError::InvalidManifest(e.to_string())))?;
-        ai_methods::handle_ai_chat(&self.config, &self.mcp_manager, message, ctx).await
+        ai_methods::handle_ai_chat(&self.config, &self.mcp_manager, &self.db, message, ctx).await
     }
 
     async fn ai_orchestrate(&self, task: String) -> Result<AiResponse, ErrorObjectOwned> {
-        ai_methods::handle_ai_orchestrate(&self.config, &self.mcp_manager, task).await
+        ai_methods::handle_ai_orchestrate(&self.config, &self.mcp_manager, &self.db, task).await
     }
 
     async fn ai_execute_tool(
@@ -593,6 +593,6 @@ impl MerabApiServer for MerabRpc {
     }
 
     async fn ai_execute_plan(&self, plan_json: String) -> Result<serde_json::Value, ErrorObjectOwned> {
-        ai_methods::handle_ai_execute_plan(&self.config, &self.mcp_manager, plan_json, None).await
+        ai_methods::handle_ai_execute_plan(&self.config, &self.mcp_manager, &self.db, plan_json, None).await
     }
 }

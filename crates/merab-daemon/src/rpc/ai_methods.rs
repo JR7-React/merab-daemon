@@ -30,6 +30,7 @@ pub fn build_ai_client(config: &MerabConfig) -> Result<AiClient, ErrorObjectOwne
         system_prompt: Some(ENGINEER_SYSTEM_PROMPT.to_string()),
         max_tokens: config.ai.max_tokens,
         temperature: config.ai.temperature,
+        api_key: None,
     };
 
     Ok(AiClient::new(ai_config))

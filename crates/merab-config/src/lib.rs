@@ -36,6 +36,8 @@ pub struct SandboxConfig {
 #[derive(Debug, Deserialize, Clone)]
 pub struct PersonaModelConfig {
     pub model: String,
+    #[serde(default)]
+    pub api_key: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -62,6 +64,11 @@ impl AiConfig {
             .map(|p| p.model.clone())
             .unwrap_or_else(|| self.model.clone())
     }
+
+    /// Retorna la api_key configurada para la persona, si existe.
+    pub fn get_api_key_for_persona(&self, persona: &str) -> Option<String> {
+        self.personas.get(persona).and_then(|p| p.api_key.clone())
+    }
 }
 
 impl Default for MerabConfig {
@@ -71,24 +78,28 @@ impl Default for MerabConfig {
             "engineer".to_string(),
             PersonaModelConfig {
                 model: "qwen/qwen3-next-80b-a3b-instruct:free".to_string(),
+                api_key: None,
             },
         );
         personas.insert(
             "coder".to_string(),
             PersonaModelConfig {
                 model: "qwen/qwen3-coder:free".to_string(),
+                api_key: None,
             },
         );
         personas.insert(
             "reviewer".to_string(),
             PersonaModelConfig {
                 model: "deepseek/deepseek-r1-0528:free".to_string(),
+                api_key: None,
             },
         );
         personas.insert(
             "qa".to_string(),
             PersonaModelConfig {
                 model: "stepfun/step-3.5-flash:free".to_string(),
+                api_key: None,
             },
         );
 

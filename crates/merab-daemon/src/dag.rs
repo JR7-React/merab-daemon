@@ -140,12 +140,14 @@ async fn execute_subtask(
     );
 
     let proxy_url = format!("http://{}:{}", config.daemon.host, config.proxy.port);
+    let persona_api_key = config.ai.get_api_key_for_persona(subtask.persona.as_str());
     let ai_config = AiClientConfig {
         proxy_url,
         model: persona_model.clone(),
         system_prompt: Some(dynamic_prompt),
         max_tokens: config.ai.max_tokens,
         temperature: config.ai.temperature,
+        api_key: persona_api_key,
     };
     let client = AiClient::new(ai_config);
 

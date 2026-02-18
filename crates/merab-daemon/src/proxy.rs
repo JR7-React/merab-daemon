@@ -67,6 +67,14 @@ async fn handle_chat_completion(
     req: Request<hyper::body::Incoming>,
     ctx: Arc<ProxyContext>,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
+    // Extraer Authorization header ANTES de consumir el body.
+    // Si el cliente envía su propia key (per-persona), se usa en vez de la global del proxy.
+    let forwarded_auth = req
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
     // 1. Read body
     let body_bytes = match req.into_body().collect().await {
         Ok(b) => b.to_bytes(),
@@ -102,7 +110,7 @@ async fn handle_chat_completion(
     // Check if streaming is enabled - if so, bypass cache for now
     if let Some(stream) = json_body.get("stream").and_then(|v| v.as_bool()) {
         if stream {
-            return forward_request(ctx, body_bytes, true).await;
+            return forward_request(ctx, body_bytes, true, forwarded_auth).await;
         }
     }
 
@@ -130,7 +138,7 @@ async fn handle_chat_completion(
     tracing::info!(hash = %hash, "Cache MISS");
 
     // 5. Forward to Upstream
-    let upstream_res = match forward_request(ctx.clone(), body_bytes.clone(), false).await {
+    let upstream_res = match forward_request(ctx.clone(), body_bytes.clone(), false, forwarded_auth).await {
         Ok(res) => res,
         Err(_) => {
             return Ok(Response::builder()
@@ -184,6 +192,7 @@ async fn forward_request(
     ctx: Arc<ProxyContext>,
     body: Bytes,
     _is_stream: bool,
+    forwarded_auth: Option<String>,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
     let client = &ctx.http_client;
 
@@ -197,8 +206,12 @@ async fn forward_request(
         .header(CONTENT_TYPE, "application/json")
         .body(body);
 
-    if let Some(key) = &ctx.api_key {
-        req_builder = req_builder.header(AUTHORIZATION, format!("Bearer {}", key));
+    // Usar la key del cliente (per-persona) si viene en la request,
+    // si no, caer en la key global del proxy.
+    let auth = forwarded_auth
+        .or_else(|| ctx.api_key.as_ref().map(|k| format!("Bearer {}", k)));
+    if let Some(key) = auth {
+        req_builder = req_builder.header(AUTHORIZATION, key);
     }
 
     match req_builder.send().await {

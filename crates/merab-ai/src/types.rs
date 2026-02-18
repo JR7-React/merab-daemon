@@ -48,6 +48,9 @@ pub struct AiClientConfig {
     pub system_prompt: Option<String>,
     pub max_tokens: u32,
     pub temperature: f32,
+    /// Si se configura, se envía como `Authorization: Bearer <key>` al proxy.
+    /// El proxy lo pasa al upstream en vez de usar su propia key global.
+    pub api_key: Option<String>,
 }
 
 /// Request body sent to the LLM proxy (OpenAI-compatible).

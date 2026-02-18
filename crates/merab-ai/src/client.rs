@@ -84,7 +84,11 @@ impl AiClient {
 
         tracing::debug!(url = %url, model = %request.model, "sending chat request");
 
-        let resp = self.http.post(&url).json(&request).send().await?;
+        let mut builder = self.http.post(&url).json(&request);
+        if let Some(key) = &self.config.api_key {
+            builder = builder.header("Authorization", format!("Bearer {}", key));
+        }
+        let resp = builder.send().await?;
 
         if !resp.status().is_success() {
             let status = resp.status();

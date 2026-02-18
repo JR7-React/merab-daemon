@@ -11,6 +11,7 @@ mod tests {
             system_prompt: Some("You are a helpful assistant.".to_string()),
             max_tokens: 256,
             temperature: 0.7,
+            api_key: None,
         }
     }
 

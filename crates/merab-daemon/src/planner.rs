@@ -102,6 +102,7 @@ impl PlannerAgent {
             system_prompt: Some(PLANNER_SYSTEM_PROMPT.to_string()),
             max_tokens: config.ai.max_tokens,
             temperature: 0.3, // Lower temp for structured output
+            api_key: None,
         };
         Self {
             client: AiClient::new(ai_config),

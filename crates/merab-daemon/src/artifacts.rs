@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use merab_core::artifact::{ArtifactLog, CommandResult};
 
 /// Rastrea los artefactos producidos por tool calls durante una ejecución del pipeline.
+#[derive(Clone)]
 pub struct ArtifactTracker {
     log: Arc<Mutex<ArtifactLog>>,
 }

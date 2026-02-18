@@ -47,6 +47,8 @@ pub struct Task {
     pub persona: Persona,
     pub subtasks: Vec<Task>,
     pub assigned_agent: Option<AgentId>,
+    #[serde(default)]
+    pub depends_on: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

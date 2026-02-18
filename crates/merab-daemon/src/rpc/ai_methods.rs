@@ -10,9 +10,10 @@ use tokio::sync::Mutex;
 
 use super::server::to_rpc_error;
 use crate::artifacts::ArtifactTracker;
+use crate::dag::{execute_plan_dag, execute_tool_call, ExecutionResult};
 use crate::mcp_manager::McpManager;
 use crate::planner::PlannerAgent;
-use crate::prompts::{get_persona_prompt, ENGINEER_SYSTEM_PROMPT};
+use crate::prompts::ENGINEER_SYSTEM_PROMPT;
 
 
 /// Build an AiClient from the daemon's config.
@@ -274,58 +275,6 @@ fn format_execution_result(result: &serde_json::Value) -> String {
     output
 }
 
-/// Execute a single tool call via MCP and return the result as a string.
-async fn execute_tool_call(
-    config: &MerabConfig,
-    mcp_manager: &Arc<McpManager>,
-    tool_call: &merab_ai::ToolCall,
-    tracker: Option<&ArtifactTracker>,
-) -> Result<String, ErrorObjectOwned> {
-    // Handle Internal Tools
-    if tool_call.name == "core.plan" {
-        let task_desc = tool_call.arguments.get("task")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| to_rpc_error(MerabError::InvalidInput("Missing 'task' argument for core.plan".into())))?;
-
-        let mut planner = PlannerAgent::new(config);
-        let plan = planner.decompose(task_desc).await
-            .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
-
-        return serde_json::to_string(&plan)
-            .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())));
-    }
-
-    let mcp_client = mcp_manager
-        .find_agent_for_tool(&tool_call.name)
-        .await
-        .ok_or_else(|| to_rpc_error(MerabError::ToolNotFound(tool_call.name.clone())))?;
-
-    let args = match &tool_call.arguments {
-        serde_json::Value::Object(map) => Some(map.clone()),
-        _ => None,
-    };
-
-    let tool_result = mcp_client
-        .call_tool(tool_call.name.clone(), args)
-        .await
-        .map_err(|e| {
-            to_rpc_error(MerabError::AiError(format!(
-                "tool '{}' failed: {}",
-                tool_call.name, e
-            )))
-        })?;
-
-    let result_value = serde_json::to_value(&tool_result)
-        .unwrap_or(serde_json::Value::Null);
-
-    if let Some(t) = tracker {
-        t.record_tool_result(&tool_call.name, &tool_call.arguments, &result_value);
-    }
-
-    serde_json::to_string(&result_value)
-        .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))
-}
-
 /// Handle `merab.ai.plan` — decompose a task into a plan.
 pub async fn handle_ai_plan(
     _config: &MerabConfig,
@@ -340,7 +289,7 @@ pub async fn handle_ai_plan(
         .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))
 }
 
-/// Handle `merab.ai.executePlan` — execute a plan with persona-based subtasks.
+/// Handle `merab.ai.executePlan` — execute a plan via DAG scheduler (paralelo donde sea posible).
 pub async fn handle_ai_execute_plan(
     config: &MerabConfig,
     mcp_manager: &Arc<McpManager>,
@@ -351,88 +300,8 @@ pub async fn handle_ai_execute_plan(
     let plan: Task = serde_json::from_str(&plan_json)
         .map_err(|e| to_rpc_error(MerabError::InvalidInput(format!("Invalid plan JSON: {}", e))))?;
 
-    let max_steps = config.ai.max_orchestration_steps;
-    let mut results: Vec<SubtaskResult> = Vec::new();
-    let mut global_context: String = String::new();
-
-    for subtask in &plan.subtasks {
-        tracing::info!(
-            subtask_id = %subtask.id,
-            persona = ?subtask.persona,
-            description = %subtask.description,
-            "executing subtask"
-        );
-
-        let persona_prompt = get_persona_prompt(subtask.persona);
-        let dynamic_prompt = build_dynamic_system_prompt(persona_prompt, mcp_manager, db).await;
-        
-        let persona_model = config.ai.get_model_for_persona(subtask.persona.as_str());
-        tracing::info!(
-            persona = ?subtask.persona,
-            model = %persona_model,
-            "using model for persona"
-        );
-
-        let proxy_url = format!("http://{}:{}", config.daemon.host, config.proxy.port);
-        let ai_config = AiClientConfig {
-            proxy_url,
-            model: persona_model.clone(),
-            system_prompt: Some(dynamic_prompt),
-            max_tokens: config.ai.max_tokens,
-            temperature: config.ai.temperature,
-        };
-        let client = AiClient::new(ai_config);
-
-        let mut messages: Vec<ChatMessage> = Vec::new();
-
-        if !global_context.is_empty() {
-            messages.push(ChatMessage::user(format!(
-                "Previous work context:\n{}\n\nNow proceed with your task.",
-                global_context
-            )));
-        }
-
-        messages.push(ChatMessage::user(subtask.description.clone()));
-
-        let mut subtask_output = String::new();
-
-        for _step in 0..max_steps {
-            let response = client
-                .chat(messages.clone())
-                .await
-                .map_err(|e| to_rpc_error(MerabError::AiError(e.to_string())))?;
-
-            if response.tool_call.is_none() {
-                subtask_output = response.content.clone();
-                break;
-            }
-
-            let tool_call = response.tool_call.clone().unwrap();
-            messages.push(ChatMessage::assistant(&response.content));
-
-            let tool_result = execute_tool_call(config, mcp_manager, &tool_call, tracker).await?;
-            messages.push(ChatMessage::user(format!(
-                "Tool '{}' returned:\n{}",
-                tool_call.name, tool_result
-            )));
-        }
-
-        global_context = format!(
-            "{}\n\n## Subtask: {} (Persona: {})\nResult: {}",
-            global_context,
-            subtask.description,
-            subtask.persona,
-            subtask_output
-        );
-
-        results.push(SubtaskResult {
-            id: subtask.id.clone(),
-            description: subtask.description.clone(),
-            persona: subtask.persona.to_string(),
-            model: persona_model,
-            output: subtask_output,
-        });
-    }
+    let config_arc = Arc::new(config.clone());
+    let results = execute_plan_dag(&config_arc, mcp_manager, db, &plan, tracker.cloned()).await?;
 
     let execution_result = ExecutionResult {
         plan_id: plan.id,
@@ -443,21 +312,4 @@ pub async fn handle_ai_execute_plan(
 
     serde_json::to_value(&execution_result)
         .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))
-}
-
-#[derive(Debug, serde::Serialize)]
-struct SubtaskResult {
-    id: String,
-    description: String,
-    persona: String,
-    model: String,
-    output: String,
-}
-
-#[derive(Debug, serde::Serialize)]
-struct ExecutionResult {
-    plan_id: String,
-    plan_description: String,
-    subtasks_executed: usize,
-    results: Vec<SubtaskResult>,
 }

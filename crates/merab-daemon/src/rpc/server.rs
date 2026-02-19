@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use merab_ai::{AiResponse, ChatMessage};
+use merab_ai::AiResponse;
 use merab_config::MerabConfig;
 use merab_core::{
     AgentManifest, AgentRecord, AgentStats, AgentSummary, AiInfo, MerabError, Message,
@@ -86,9 +86,6 @@ pub trait MerabApi {
     #[method(name = "merab.getSystemStatus")]
     async fn get_system_status(&self) -> Result<SystemStatus, ErrorObjectOwned>;
 
-    #[method(name = "merab.ai.chat")]
-    async fn ai_chat(&self, message: String, context_json: String) -> Result<AiResponse, ErrorObjectOwned>;
-
     #[method(name = "merab.ai.orchestrate")]
     async fn ai_orchestrate(&self, task: String) -> Result<AiResponse, ErrorObjectOwned>;
 
@@ -97,9 +94,6 @@ pub trait MerabApi {
 
     #[method(name = "merab.ai.orchestrate.withTests")]
     async fn ai_orchestrate_with_tests(&self, task: String, event_file: String) -> Result<AiResponse, ErrorObjectOwned>;
-
-    #[method(name = "merab.ai.executeTool")]
-    async fn ai_execute_tool(&self, tool_name: String, arguments: serde_json::Value) -> Result<serde_json::Value, ErrorObjectOwned>;
 
     #[method(name = "merab.ai.plan")]
     async fn ai_plan(&self, task: String) -> Result<serde_json::Value, ErrorObjectOwned>;
@@ -310,12 +304,6 @@ impl MerabApiServer for MerabRpc {
         })
     }
 
-    async fn ai_chat(&self, message: String, context_json: String) -> Result<AiResponse, ErrorObjectOwned> {
-        let ctx: Vec<ChatMessage> = serde_json::from_str(&context_json)
-            .map_err(|e| to_rpc_error(MerabError::InvalidManifest(e.to_string())))?;
-        ai_methods::handle_ai_chat(&self.config, &self.mcp_manager, &self.db, message, ctx).await
-    }
-
     async fn ai_orchestrate(&self, task: String) -> Result<AiResponse, ErrorObjectOwned> {
         ai_methods::handle_ai_orchestrate(&self.config, &self.mcp_manager, &self.db, task, None, false).await
     }
@@ -328,10 +316,6 @@ impl MerabApiServer for MerabRpc {
     async fn ai_orchestrate_with_tests(&self, task: String, event_file: String) -> Result<AiResponse, ErrorObjectOwned> {
         let path = std::path::PathBuf::from(event_file);
         ai_methods::handle_ai_orchestrate(&self.config, &self.mcp_manager, &self.db, task, Some(path), true).await
-    }
-
-    async fn ai_execute_tool(&self, tool_name: String, arguments: serde_json::Value) -> Result<serde_json::Value, ErrorObjectOwned> {
-        ai_methods::handle_execute_tool(&self.mcp_manager, tool_name, arguments).await
     }
 
     async fn ai_plan(&self, task: String) -> Result<serde_json::Value, ErrorObjectOwned> {

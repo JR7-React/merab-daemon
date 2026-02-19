@@ -4,7 +4,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use uuid::Uuid;
 
-use merab_ai::{AiClient, AiClientConfig, AiResponse, ChatMessage, RetryConfig};
+use merab_ai::{AiClient, AiClientConfig, AiResponse, RetryConfig};
 use merab_config::MerabConfig;
 use merab_core::multi_agent_pipeline::Task;
 use merab_core::session::{Session, SessionStatus};
@@ -122,56 +122,6 @@ pub async fn build_dynamic_system_prompt(
     }
 
     prompt
-}
-
-pub async fn handle_ai_chat(
-    config: &MerabConfig,
-    mcp_manager: &Arc<McpManager>,
-    db: &Arc<Mutex<Database>>,
-    message: String,
-    context: Vec<ChatMessage>,
-) -> Result<AiResponse, ErrorObjectOwned> {
-    let mut client = build_ai_client(config)?;
-
-    let dynamic_prompt = build_dynamic_system_prompt(ENGINEER_SYSTEM_PROMPT, mcp_manager, db, Some(&message)).await;
-    client.set_system_prompt(dynamic_prompt);
-
-    let mut messages = context;
-    messages.push(ChatMessage::user(message));
-
-    client
-        .chat(messages)
-        .await
-        .map_err(|e| to_rpc_error(MerabError::AiError(e.to_string())))
-}
-
-pub async fn handle_execute_tool(
-    mcp_manager: &Arc<McpManager>,
-    tool_name: String,
-    arguments: serde_json::Value,
-) -> Result<serde_json::Value, ErrorObjectOwned> {
-    let mcp_client = mcp_manager
-        .find_agent_for_tool(&tool_name)
-        .await
-        .ok_or_else(|| to_rpc_error(MerabError::ToolNotFound(tool_name.clone())))?;
-
-    let args = match arguments {
-        serde_json::Value::Object(map) => Some(map),
-        _ => None,
-    };
-
-    let tool_result = mcp_client
-        .call_tool(tool_name.clone(), args)
-        .await
-        .map_err(|e| {
-            to_rpc_error(MerabError::AiError(format!(
-                "tool '{}' failed: {}",
-                tool_name, e
-            )))
-        })?;
-
-    serde_json::to_value(&tool_result)
-        .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))
 }
 
 pub async fn handle_ai_orchestrate(

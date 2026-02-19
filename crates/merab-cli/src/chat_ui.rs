@@ -1,15 +1,11 @@
 use std::io;
 
-use crate::event_channel;
-
-
 use crossterm::{
-
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use merab_ai::{ChatMessage, ChatRole};
+use merab_ai::ChatMessage;
 
 use ratatui::{
     backend::CrosstermBackend,
@@ -22,7 +18,7 @@ use crate::chat_render::{
     render_feed, render_input, render_sidebar, render_status_bar, restore_console_mouse_selection,
     print_splash, render_slash_popup,
 };
-use crate::slash_commands::{self, SlashCommandResult};
+use crate::slash_commands;
 use crate::client::MerabClient;
 use crate::git_utils::{self, GitFileStat};
 

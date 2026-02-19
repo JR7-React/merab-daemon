@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
-use merab_ai::{ChatMessage, ChatRole};
+use merab_ai::ChatMessage;
 use merab_core::EventKind;
 use ratatui::{
     backend::CrosstermBackend,

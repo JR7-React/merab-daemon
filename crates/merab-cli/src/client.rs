@@ -1,5 +1,5 @@
 use anyhow::Result;
-use merab_ai::{AiResponse, ChatMessage};
+use merab_ai::AiResponse;
 use merab_core::{AgentManifest, AgentRecord, AgentSummary, Message, ProjectInfo, Session};
 use merab_store::{ConvMessage, ConvSummary};
 use merab_transport::a2a::{AgentCard, TaskResponse};
@@ -239,15 +239,6 @@ impl MerabClient {
         Ok(result)
     }
 
-    pub async fn ai_chat(&self, message: &str, context: Vec<ChatMessage>) -> Result<AiResponse> {
-        let mut params = ObjectParams::new();
-        params.insert("message", message)?;
-        let context_json = serde_json::to_string(&context)?;
-        params.insert("context_json", context_json)?;
-        let result: AiResponse = self.client.request("merab.ai.chat", params).await?;
-        Ok(result)
-    }
-
     pub async fn ai_orchestrate_stream(&self, task: &str, event_file: &str) -> Result<AiResponse> {
         let mut params = ObjectParams::new();
         params.insert("task", task)?;
@@ -261,21 +252,6 @@ impl MerabClient {
         params.insert("task", task)?;
         params.insert("event_file", event_file)?;
         let result: AiResponse = self.client.request("merab.ai.orchestrate.withTests", params).await?;
-        Ok(result)
-    }
-
-    pub async fn ai_execute_tool(
-        &self,
-        tool_name: &str,
-        arguments: serde_json::Value,
-    ) -> Result<serde_json::Value> {
-        let mut params = ObjectParams::new();
-        params.insert("tool_name", tool_name)?;
-        params.insert("arguments", &arguments)?;
-        let result: serde_json::Value = self
-            .client
-            .request("merab.ai.executeTool", params)
-            .await?;
         Ok(result)
     }
 

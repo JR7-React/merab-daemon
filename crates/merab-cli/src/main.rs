@@ -5,6 +5,7 @@ mod chat_render;
 mod chat_ui;
 mod client;
 mod config_cmd;
+mod doctor;
 mod event_tail;
 mod git_utils;
 mod jobs_cmd;
@@ -154,6 +155,16 @@ enum Commands {
         /// Suppress per-event output, only show errors
         #[arg(long)]
         quiet: bool,
+    },
+    /// Check system health and configuration
+    #[command(about = "Check system health and configuration")]
+    Doctor {
+        /// Show only failed checks
+        #[arg(long)]
+        only_errors: bool,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Manage Merab configuration
     #[command(subcommand)]
@@ -387,6 +398,22 @@ async fn main() -> Result<()> {
                 debounce,
                 quiet,
             }).await?;
+        }
+
+        Commands::Doctor { only_errors, json } => {
+            let client_opt = MerabClient::new(&cli.url).ok();
+
+            let report = doctor::run_doctor(client_opt.as_ref(), only_errors).await;
+
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                doctor::print_report(&report);
+            }
+
+            if report.has_errors() {
+                std::process::exit(1);
+            }
         }
 
         Commands::Config(cmd) => {

@@ -1765,6 +1765,7 @@ dependencies = [
  "merab-transport",
  "merab-tui",
  "ratatui",
+ "reqwest",
  "rustyline",
  "serde",
  "serde_json",

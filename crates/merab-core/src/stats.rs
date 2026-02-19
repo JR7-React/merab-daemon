@@ -7,6 +7,9 @@ pub struct SystemStatus {
     pub proxy: ProxyStats,
     pub node_info: NodeInfo,
     pub ai: AiInfo,
+    pub db_path: String,
+    pub db_size_mb: u64,
+    pub session_count: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

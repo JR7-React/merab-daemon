@@ -250,6 +250,18 @@ impl MerabApiServer for MerabRpc {
         let (hits, total) = db
             .get_proxy_stats()
             .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))?;
+        let db_path = db.path.to_string_lossy().to_string();
+        let db_size_mb = std::fs::metadata(&db.path)
+            .map(|m| m.len() / 1024 / 1024)
+            .unwrap_or(0);
+        let project_path = db.get_memory("project.root_path")
+            .ok()
+            .flatten()
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| ".".to_string());
+        let session_count = db.get_project_stats(&project_path)
+            .map(|s| s.total_sessions)
+            .unwrap_or(0);
         Ok(SystemStatus {
             agents: agents_stats,
             proxy: ProxyStats { cache_hits: hits, total_requests: total },
@@ -265,6 +277,9 @@ impl MerabApiServer for MerabRpc {
                 max_tokens: self.config.ai.max_tokens,
                 temperature: self.config.ai.temperature,
             },
+            db_path,
+            db_size_mb,
+            session_count,
         })
     }
 

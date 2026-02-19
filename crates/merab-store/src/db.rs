@@ -1,21 +1,28 @@
 use rusqlite::Connection;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub struct Database {
     pub conn: Connection,
+    pub path: PathBuf,
 }
 
 impl Database {
     pub fn open(path: &Path) -> Result<Self, rusqlite::Error> {
         let conn = Connection::open(path)?;
-        let db = Self { conn };
+        let db = Self {
+            conn,
+            path: path.to_path_buf(),
+        };
         db.migrate()?;
         Ok(db)
     }
 
     pub fn open_in_memory() -> Result<Self, rusqlite::Error> {
         let conn = Connection::open_in_memory()?;
-        let db = Self { conn };
+        let db = Self {
+            conn,
+            path: PathBuf::from(":memory:"),
+        };
         db.migrate()?;
         Ok(db)
     }

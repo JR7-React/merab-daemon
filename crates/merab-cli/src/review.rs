@@ -69,3 +69,64 @@ Termina con una sección "Veredicto" que diga si los cambios son seguros para me
         focus, diff
     )
 }
+
+use std::path::PathBuf;
+
+pub async fn run_review(
+    url: &str,
+    branch: Option<String>,
+    file: Option<String>,
+    critical: bool,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    use crate::{bootstrap, event_tail};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    let ready_client = bootstrap::ensure_ready(url).await?;
+
+    let diff = get_review_diff(&ready_client, branch.as_deref(), file.as_deref()).await?;
+
+    if diff.trim().is_empty() {
+        println!("No hay cambios para revisar.");
+        println!("Usa 'git add' para stagear cambios, o '--branch <rama>' para comparar.");
+        return Ok(());
+    }
+
+    let line_count = diff.lines().count();
+    println!("[merab] Analizando diff ({} líneas)...", line_count);
+
+    let task = build_review_task(&diff, critical);
+
+    let event_file = std::env::temp_dir()
+        .join(format!("merab-review-{}.jsonl", std::process::id()));
+    let event_file_str = event_file.to_string_lossy().to_string();
+
+    let running = Arc::new(AtomicBool::new(true));
+    let tail_handle = event_tail::start_event_tail(&event_file, running.clone());
+
+    let result = ready_client.ai_orchestrate_stream(&task, &event_file_str).await;
+
+    running.store(false, Ordering::Relaxed);
+    let _ = tail_handle.join();
+    let _ = std::fs::remove_file(&event_file);
+
+    match result {
+        Ok(resp) => {
+            println!("\n{}", resp.content);
+            if let Some(output_path) = output {
+                std::fs::write(&output_path, &resp.content)?;
+                println!("\nReview guardado en: {}", output_path.display());
+            }
+            if let Some(usage) = &resp.usage {
+                println!("\nTokens: {} input / {} output", usage.input, usage.output);
+                if let Some(cost) = merab_core::pricing::estimate_cost(&usage.model, usage.input, usage.output) {
+                    println!("Costo estimado: ${:.4}", cost);
+                }
+            }
+        }
+        Err(e) => eprintln!("Error: {}", e),
+    }
+
+    Ok(())
+}

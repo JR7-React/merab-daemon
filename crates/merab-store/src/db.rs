@@ -148,6 +148,18 @@ impl Database {
 
             CREATE INDEX IF NOT EXISTS idx_conv_project
                 ON conversations(project_path, updated_at DESC);
+
+            CREATE TABLE IF NOT EXISTS code_index (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_path TEXT NOT NULL,
+                name TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                file TEXT NOT NULL,
+                line INTEGER NOT NULL,
+                signature TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_code_index_project_name
+                ON code_index(project_path, name);
             ",
         )?;
 

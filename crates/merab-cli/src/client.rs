@@ -363,4 +363,28 @@ impl MerabClient {
         let result: bool = self.client.request("merab.job.cancel", params).await?;
         Ok(result)
     }
+
+    pub async fn index_build(&self, project_path: String) -> Result<u64> {
+        let mut params = ObjectParams::new();
+        params.insert("project_path", project_path)?;
+        let result: u64 = self.client.request("merab.index.build", params).await?;
+        Ok(result)
+    }
+
+    pub async fn index_search(
+        &self,
+        project_path: String,
+        query: String,
+        kind: Option<String>,
+        limit: usize,
+    ) -> Result<Vec<merab_store::IndexedSymbol>> {
+        let mut params = ObjectParams::new();
+        params.insert("project_path", project_path)?;
+        params.insert("query", query)?;
+        params.insert("kind", kind)?;
+        params.insert("limit", limit)?;
+        let result: Vec<merab_store::IndexedSymbol> =
+            self.client.request("merab.index.search", params).await?;
+        Ok(result)
+    }
 }

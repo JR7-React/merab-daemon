@@ -43,6 +43,7 @@ pub async fn build_dynamic_system_prompt(
     base_prompt: &str,
     mcp_manager: &Arc<McpManager>,
     db: &Arc<Mutex<Database>>,
+    task: Option<&str>,
 ) -> String {
     let mut prompt = base_prompt.to_string();
 
@@ -57,6 +58,32 @@ pub async fn build_dynamic_system_prompt(
             prompt.push_str("\n\n## Project Instructions\n");
             prompt.push_str("The following instructions are set by the project owner and MUST be followed:\n\n");
             prompt.push_str(&instr);
+        }
+
+        // Inject relevant symbols from codebase index
+        if let Some(task_str) = task {
+            if let Ok(Some(serde_json::Value::String(project_path))) = store.get_memory("project.root_path") {
+                let keywords: Vec<&str> = task_str
+                    .split_whitespace()
+                    .filter(|w| w.len() > 4)
+                    .take(5)
+                    .collect();
+                let mut index_context = String::new();
+                for kw in keywords {
+                    if let Ok(symbols) = store.index_search(&project_path, kw, None, 5) {
+                        for s in symbols {
+                            index_context.push_str(&format!(
+                                "  {} {} @ {}:{}\n",
+                                s.kind, s.name, s.file, s.line
+                            ));
+                        }
+                    }
+                }
+                if !index_context.is_empty() {
+                    prompt.push_str("\n## Relevant Project Symbols\n");
+                    prompt.push_str(&index_context);
+                }
+            }
         }
     }
 
@@ -106,7 +133,7 @@ pub async fn handle_ai_chat(
 ) -> Result<AiResponse, ErrorObjectOwned> {
     let mut client = build_ai_client(config)?;
 
-    let dynamic_prompt = build_dynamic_system_prompt(ENGINEER_SYSTEM_PROMPT, mcp_manager, db).await;
+    let dynamic_prompt = build_dynamic_system_prompt(ENGINEER_SYSTEM_PROMPT, mcp_manager, db, Some(&message)).await;
     client.set_system_prompt(dynamic_prompt);
 
     let mut messages = context;

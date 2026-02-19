@@ -4,6 +4,7 @@ pub mod dag;
 pub mod events;
 pub mod jobs;
 pub mod mcp_manager;
+pub mod parser;
 pub mod process;
 pub mod proxy;
 pub mod registry;

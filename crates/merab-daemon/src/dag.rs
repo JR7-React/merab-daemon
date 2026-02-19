@@ -153,7 +153,7 @@ async fn execute_subtask(
 ) -> Result<SubtaskResult, ErrorObjectOwned> {
     let max_steps = config.ai.max_orchestration_steps;
     let persona_prompt = get_persona_prompt(subtask.persona);
-    let dynamic_prompt = build_dynamic_system_prompt(persona_prompt, &mcp_manager, &db).await;
+    let dynamic_prompt = build_dynamic_system_prompt(persona_prompt, &mcp_manager, &db, Some(&subtask.description)).await;
     let persona_model = config.ai.get_model_for_persona(subtask.persona.as_str());
 
     if let Some(ref sink) = event_sink {

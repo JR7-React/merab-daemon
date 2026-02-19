@@ -145,6 +145,12 @@ pub trait MerabApi {
 
     #[method(name = "merab.job.cancel")]
     async fn job_cancel(&self, job_id: String) -> Result<bool, ErrorObjectOwned>;
+
+    #[method(name = "merab.index.build")]
+    async fn index_build(&self, project_path: String) -> Result<u64, ErrorObjectOwned>;
+
+    #[method(name = "merab.index.search")]
+    async fn index_search(&self, project_path: String, query: String, kind: Option<String>, limit: usize) -> Result<Vec<merab_store::IndexedSymbol>, ErrorObjectOwned>;
 }
 
 pub struct MerabRpc {
@@ -413,5 +419,13 @@ impl MerabApiServer for MerabRpc {
 
     async fn job_cancel(&self, job_id: String) -> Result<bool, ErrorObjectOwned> {
         job_impls::job_cancel(self, job_id).await
+    }
+
+    async fn index_build(&self, project_path: String) -> Result<u64, ErrorObjectOwned> {
+        crate::rpc::index_impls::index_build(self, project_path).await
+    }
+
+    async fn index_search(&self, project_path: String, query: String, kind: Option<String>, limit: usize) -> Result<Vec<merab_store::IndexedSymbol>, ErrorObjectOwned> {
+        crate::rpc::index_impls::index_search(self, project_path, query, kind, limit).await
     }
 }

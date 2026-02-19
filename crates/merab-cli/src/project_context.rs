@@ -1,5 +1,6 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use merab_core::ProjectInstructions;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -10,11 +11,13 @@ pub struct ProjectContext {
     pub description: String,
     pub key_files: Vec<String>,
     pub dependencies: Vec<String>,
+    pub instructions: Option<String>,
+    pub instructions_path: Option<PathBuf>,
 }
 
 impl ProjectContext {
     pub fn detect(root: &Path) -> Self {
-        if root.join("Cargo.toml").exists() {
+        let mut ctx = if root.join("Cargo.toml").exists() {
             detect_rust(root)
         } else if root.join("package.json").exists() {
             detect_node(root)
@@ -24,7 +27,14 @@ impl ProjectContext {
             detect_python(root)
         } else {
             detect_generic(root)
+        };
+
+        if let Some(instr) = ProjectInstructions::load(root) {
+            ctx.instructions = Some(instr.content);
+            ctx.instructions_path = Some(instr.path);
         }
+
+        ctx
     }
 
     pub fn to_prompt_string(&self) -> String {
@@ -59,6 +69,15 @@ impl ProjectContext {
         }
         if !self.key_files.is_empty() {
             println!("Structure:    {}", self.key_files.join(", "));
+        }
+        if let Some(ref path) = self.instructions_path {
+            println!(
+                "Instructions: {} ({} chars)",
+                path.file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_default(),
+                self.instructions.as_ref().map(|s| s.len()).unwrap_or(0)
+            );
         }
     }
 }
@@ -110,6 +129,8 @@ fn detect_rust(root: &Path) -> ProjectContext {
         description,
         key_files,
         dependencies: deps,
+        instructions: None,
+        instructions_path: None,
     }
 }
 
@@ -120,7 +141,12 @@ fn detect_node(root: &Path) -> ProjectContext {
     let desc = json_value(&pkg, "description").unwrap_or_default();
 
     let has_ts = root.join("tsconfig.json").exists();
-    let language = if has_ts { "TypeScript" } else { "JavaScript (Node.js)" }.to_string();
+    let language = if has_ts {
+        "TypeScript"
+    } else {
+        "JavaScript (Node.js)"
+    }
+    .to_string();
 
     let display_name = if version.is_empty() {
         name
@@ -138,6 +164,8 @@ fn detect_node(root: &Path) -> ProjectContext {
         description: desc,
         key_files,
         dependencies: deps,
+        instructions: None,
+        instructions_path: None,
     }
 }
 
@@ -165,6 +193,8 @@ fn detect_go(root: &Path) -> ProjectContext {
         description,
         key_files: src_structure(root),
         dependencies: Vec::new(),
+        instructions: None,
+        instructions_path: None,
     }
 }
 
@@ -192,6 +222,8 @@ fn detect_python(root: &Path) -> ProjectContext {
         description: readme_excerpt(root),
         key_files: src_structure(root),
         dependencies: deps,
+        instructions: None,
+        instructions_path: None,
     }
 }
 
@@ -208,6 +240,8 @@ fn detect_generic(root: &Path) -> ProjectContext {
         description: readme_excerpt(root),
         key_files: src_structure(root),
         dependencies: Vec::new(),
+        instructions: None,
+        instructions_path: None,
     }
 }
 
@@ -237,7 +271,10 @@ fn readme_excerpt(root: &Path) -> String {
 /// Extract a simple `key = "value"` from TOML text (works for [package] section).
 fn toml_value(text: &str, key: &str) -> Option<String> {
     text.lines()
-        .find(|l| l.trim().starts_with(&format!("{} =", key)) || l.trim().starts_with(&format!("{}=", key)))
+        .find(|l| {
+            l.trim().starts_with(&format!("{} =", key))
+                || l.trim().starts_with(&format!("{}=", key))
+        })
         .and_then(|l| l.splitn(2, '=').nth(1))
         .map(|v| v.trim().trim_matches('"').to_string())
 }

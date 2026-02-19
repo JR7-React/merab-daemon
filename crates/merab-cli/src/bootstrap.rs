@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use merab_core::{AgentManifest, AgentStatus, AgentSummary, ProtocolKind};
+use merab_core::{AgentManifest, AgentStatus, AgentSummary, ProjectInstructions, ProtocolKind};
 
 use crate::client::MerabClient;
 use crate::project_context::ProjectContext;
@@ -56,6 +56,19 @@ async fn store_project_context(client: &MerabClient) {
         .await
     {
         eprintln!("Warning: failed to store project root path: {}", e);
+    }
+
+    if let Some(instr) = ProjectInstructions::load(&cwd) {
+        if let Err(e) = client
+            .memory_put(
+                "project.instructions",
+                serde_json::Value::String(instr.content),
+                None,
+            )
+            .await
+        {
+            eprintln!("Warning: failed to store project instructions: {}", e);
+        }
     }
 }
 

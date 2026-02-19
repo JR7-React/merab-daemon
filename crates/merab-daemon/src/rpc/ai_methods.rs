@@ -52,6 +52,12 @@ pub async fn build_dynamic_system_prompt(
             prompt.push_str("\n\n## Project Context\n");
             prompt.push_str(&ctx);
         }
+
+        if let Ok(Some(serde_json::Value::String(instr))) = store.get_memory("project.instructions") {
+            prompt.push_str("\n\n## Project Instructions\n");
+            prompt.push_str("The following instructions are set by the project owner and MUST be followed:\n\n");
+            prompt.push_str(&instr);
+        }
     }
 
     let tools = mcp_manager.get_all_tools().await;

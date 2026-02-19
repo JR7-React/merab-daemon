@@ -9,7 +9,9 @@ mod event_tail;
 mod git_utils;
 mod jobs_cmd;
 mod project_context;
+mod review;
 mod sessions_cmd;
+mod watch;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -133,6 +135,25 @@ enum Commands {
         /// Save review to this file
         #[arg(long)]
         output: Option<PathBuf>,
+    },
+    /// Watch files and run AI tasks on changes
+    #[command(about = "Watch files and run AI tasks on changes")]
+    Watch {
+        /// Glob pattern of files to watch (default: "**/*")
+        #[arg(long, short, default_value = "**/*")]
+        pattern: String,
+        /// Task to run when files change
+        #[arg(long, short)]
+        task: String,
+        /// Also run tests and fix failures (like ask --test)
+        #[arg(long)]
+        test: bool,
+        /// Debounce delay in seconds to batch rapid changes (default: 2)
+        #[arg(long, default_value = "2")]
+        debounce: u64,
+        /// Suppress per-event output, only show errors
+        #[arg(long)]
+        quiet: bool,
     },
     /// Manage Merab configuration
     #[command(subcommand)]
@@ -313,7 +334,7 @@ async fn main() -> Result<()> {
         Commands::Review { branch, file, critical, output } => {
             let ready_client = bootstrap::ensure_ready(&cli.url).await?;
 
-            let diff = get_review_diff(&ready_client, branch.as_deref(), file.as_deref()).await?;
+            let diff = review::get_review_diff(&ready_client, branch.as_deref(), file.as_deref()).await?;
 
             if diff.trim().is_empty() {
                 println!("No hay cambios para revisar.");
@@ -324,7 +345,7 @@ async fn main() -> Result<()> {
             let line_count = diff.lines().count();
             println!("[merab] Analizando diff ({} líneas)...", line_count);
 
-            let task = build_review_task(&diff, critical);
+            let task = review::build_review_task(&diff, critical);
 
             let event_file = std::env::temp_dir()
                 .join(format!("merab-review-{}.jsonl", std::process::id()));
@@ -357,6 +378,17 @@ async fn main() -> Result<()> {
             }
         }
 
+        Commands::Watch { pattern, task, test, debounce, quiet } => {
+            let ready_client = bootstrap::ensure_ready(&cli.url).await?;
+            watch::run_watch(&ready_client, watch::WatchConfig {
+                pattern,
+                task,
+                test,
+                debounce,
+                quiet,
+            }).await?;
+        }
+
         Commands::Config(cmd) => {
             match cmd {
                 config_cmd::ConfigCommands::List => config_cmd::config_list()?,
@@ -369,69 +401,6 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
-}
-
-async fn get_review_diff(
-    client: &MerabClient,
-    branch: Option<&str>,
-    file: Option<&str>,
-) -> anyhow::Result<String> {
-    let agents = client.list_agents().await?;
-    let git_agent = agents.iter()
-        .find(|a| a.name.contains("git"))
-        .ok_or_else(|| anyhow::anyhow!(
-            "Agente merab-git no encontrado. Ejecuta 'merab init' primero."
-        ))?;
-
-    let mut args = serde_json::json!({});
-    if let Some(b) = branch {
-        args["branch"] = serde_json::Value::String(b.to_string());
-    }
-    if let Some(f) = file {
-        args["path"] = serde_json::Value::String(f.to_string());
-    }
-
-    let result = client.call_tool(&git_agent.id.to_string(), "git.diff", args).await?;
-
-    let diff = result
-        .get("content")
-        .and_then(|c| c.as_array())
-        .and_then(|arr| arr.first())
-        .and_then(|item| item.get("text"))
-        .and_then(|t| t.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    Ok(diff)
-}
-
-fn build_review_task(diff: &str, critical_only: bool) -> String {
-    let focus = if critical_only {
-        "Reporta SOLO problemas críticos (bugs, vulnerabilidades de seguridad, data races)."
-    } else {
-        "Reporta problemas críticos, advertencias, y sugerencias de mejora."
-    };
-
-    format!(
-        r#"Eres un revisor de código senior. Revisa el siguiente git diff y produce un informe estructurado en markdown.
-
-{}
-
-Para cada problema encontrado, incluye:
-- Severidad: [CRÍTICO|ADVERTENCIA|SUGERENCIA]
-- Archivo y línea aproximada
-- Descripción del problema
-- Código sugerido (si aplica)
-
-Termina con una sección "Veredicto" que diga si los cambios son seguros para mergear.
-
-## Git Diff
-
-```diff
-{}
-```"#,
-        focus, diff
-    )
 }
 
 pub(crate) fn format_number(n: u64) -> String {

@@ -323,79 +323,146 @@ async fn handle_enter(
     *is_processing = true;
     *scroll_offset = 0;
 
+    // Helper closure to redraw the terminal
+    let redraw = |terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+                  messages: &[ChatMessage],
+                  input: &str,
+                  model: &str,
+                  tasks: &[(bool, String)],
+                  tokens_used: u64,
+                  repo_status: &[GitFileStat],
+                  scroll_offset: usize,
+                  sidebar_scroll: usize,
+                  sidebar_scrollbar_state: &mut ScrollbarState| {
+        let _ = terminal.draw(|f| {
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Min(1), Constraint::Length(3), Constraint::Length(1)])
+                .split(f.area());
+            let main_chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(75), Constraint::Percentage(25)])
+                .split(chunks[0]);
+            // We need owned copies for render since tasks is a slice
+            let mut tasks_vec: Vec<(bool, String)> = tasks.to_vec();
+            render_feed(f, main_chunks[0], messages, scroll_offset);
+            render_sidebar(f, main_chunks[1], model, &mut tasks_vec, tokens_used, true, repo_status, sidebar_scroll, sidebar_scrollbar_state);
+            render_input(f, chunks[1], input, true);
+            render_status_bar(f, chunks[2], model);
+        });
+    };
+
     // Force redraw to show user message immediately
-    terminal.draw(|f| {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(1), Constraint::Length(3), Constraint::Length(1)])
-            .split(f.area());
-        let main_chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(75), Constraint::Percentage(25)])
-            .split(chunks[0]);
-        render_feed(f, main_chunks[0], messages, *scroll_offset);
-        render_sidebar(f, main_chunks[1], model, tasks, *tokens_used, true, repo_status, *sidebar_scroll, sidebar_scrollbar_state);
-        render_input(f, chunks[1], input, true);
-        render_status_bar(f, chunks[2], model);
-    })?;
+    redraw(terminal, messages, input, model, tasks, *tokens_used, repo_status, *scroll_offset, *sidebar_scroll, sidebar_scrollbar_state);
 
-    match process_message(client, context, &user_msg).await {
-        Ok((response, tokens)) => {
-            messages.push(ChatMessage::assistant(&response));
-            context.push(ChatMessage::user(&user_msg));
-            context.push(ChatMessage::assistant(&response));
-            *tokens_used += tokens as u64;
-            if let Some(last_task) = tasks.last_mut() {
-                last_task.0 = true;
-            }
-            
-            if !conv_id.is_empty() {
-                let _ = client.conv_add_message(conv_id, "user", &user_msg).await;
-                let _ = client.conv_add_message(conv_id, "assistant", &response).await;
-            }
-        }
-        Err(e) => {
-            messages.push(ChatMessage::assistant(&format!("Error: {}", e)));
-        }
-    }
-    *is_processing = false;
-    Ok(false)
-}
+    // --- Agentic tool execution loop ---
+    let mut ai_context = context.clone();
+    ai_context.push(ChatMessage::user(&user_msg));
 
-async fn process_message(
-    client: &MerabClient,
-    context: &mut Vec<ChatMessage>,
-    input: &str,
-) -> anyhow::Result<(String, usize)> {
-    let mut messages = context.clone();
-    messages.push(ChatMessage::user(input));
+    let mut final_response = String::new();
+    let mut step_tokens: u64 = 0;
 
-    for _step in 0..10 {
-        let (current_msg, prev_context) = if messages.len() <= 1 {
-            (input.to_string(), context.clone())
+    for step in 0..10 {
+        let (current_msg, prev_ctx) = if ai_context.len() <= 1 {
+            (user_msg.clone(), context.clone())
         } else {
-            let last = messages.last().cloned().unwrap_or(ChatMessage::user(""));
-            let prev = messages[..messages.len().saturating_sub(1)].to_vec();
+            let last = ai_context.last().cloned().unwrap_or(ChatMessage::user(""));
+            let prev = ai_context[..ai_context.len().saturating_sub(1)].to_vec();
             (last.content.clone(), prev)
         };
 
-        let resp = client.ai_chat(&current_msg, prev_context).await?;
+        let resp = match client.ai_chat(&current_msg, prev_ctx).await {
+            Ok(r) => r,
+            Err(e) => {
+                messages.push(ChatMessage::assistant(&format!("Error: {}", e)));
+                break;
+            }
+        };
+
+        if let Some(usage) = &resp.usage {
+            step_tokens += (usage.input + usage.output) as u64;
+        }
 
         if let Some(tool_call) = &resp.tool_call {
-            messages.push(ChatMessage::assistant(&resp.content));
-            let result = client
-                .ai_execute_tool(&tool_call.name, tool_call.arguments.clone())
-                .await?;
-            let result_str = serde_json::to_string(&result)?;
-            messages.push(ChatMessage::user(format!(
-                "Tool '{}': {}",
-                tool_call.name, result_str
-            )));
+            // Show tool call in progress
+            let tool_label = format!("🔧 {} ...", tool_call.name);
+            tasks.push((false, tool_label.clone()));
+            messages.push(ChatMessage::system(&format!("⚙ Ejecutando: {} ...", tool_call.name)));
+            redraw(terminal, messages, input, model, tasks, *tokens_used + step_tokens, repo_status, *scroll_offset, *sidebar_scroll, sidebar_scrollbar_state);
+
+            // Execute tool
+            ai_context.push(ChatMessage::assistant(&resp.content));
+            match client.ai_execute_tool(&tool_call.name, tool_call.arguments.clone()).await {
+                Ok(result) => {
+                    let result_str = serde_json::to_string(&result).unwrap_or_default();
+                    let short_result = if result_str.len() > 200 {
+                        format!("{}...", &result_str[..200])
+                    } else {
+                        result_str.clone()
+                    };
+
+                    // Update task as done and show result
+                    if let Some(last_task) = tasks.last_mut() {
+                        last_task.0 = true;
+                        last_task.1 = format!("✓ {}", tool_call.name);
+                    }
+                    // Replace the "executing" message with the result
+                    if let Some(last_msg) = messages.last_mut() {
+                        last_msg.content = format!("✓ {} → {}", tool_call.name, short_result);
+                    }
+
+                    ai_context.push(ChatMessage::user(format!(
+                        "Tool '{}': {}",
+                        tool_call.name, result_str
+                    )));
+                }
+                Err(e) => {
+                    if let Some(last_task) = tasks.last_mut() {
+                        last_task.0 = true;
+                        last_task.1 = format!("✗ {}", tool_call.name);
+                    }
+                    if let Some(last_msg) = messages.last_mut() {
+                        last_msg.content = format!("✗ {} falló: {}", tool_call.name, e);
+                    }
+                    ai_context.push(ChatMessage::user(format!(
+                        "Tool '{}' failed: {}",
+                        tool_call.name, e
+                    )));
+                }
+            }
+
+            // Redraw with updated status
+            redraw(terminal, messages, input, model, tasks, *tokens_used + step_tokens, repo_status, *scroll_offset, *sidebar_scroll, sidebar_scrollbar_state);
             continue;
         }
 
-        return Ok((resp.content.clone(), resp.content.len()));
+        // No tool call = final answer
+        final_response = resp.content.clone();
+        break;
     }
 
-    Ok(("Max steps reached".to_string(), 0))
+    if final_response.is_empty() && step_tokens > 0 {
+        final_response = "Tarea completada.".to_string();
+    }
+
+    if !final_response.is_empty() {
+        messages.push(ChatMessage::assistant(&final_response));
+        context.push(ChatMessage::user(&user_msg));
+        context.push(ChatMessage::assistant(&final_response));
+    }
+
+    *tokens_used += step_tokens;
+    if let Some(last_task) = tasks.iter_mut().rev().find(|(done, t)| !done && t.starts_with("Process:")) {
+        last_task.0 = true;
+    }
+
+    if !conv_id.is_empty() {
+        let _ = client.conv_add_message(conv_id, "user", &user_msg).await;
+        if !final_response.is_empty() {
+            let _ = client.conv_add_message(conv_id, "assistant", &final_response).await;
+        }
+    }
+
+    *is_processing = false;
+    Ok(false)
 }

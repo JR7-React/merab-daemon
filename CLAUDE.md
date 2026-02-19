@@ -144,29 +144,40 @@ CLI
 
 ## Estado actual — Sprints completados
 
-| Sprint | Feature | Commit |
-|--------|---------|--------|
-| 10 | Base: daemon, CLI, agentes MCP, chat TUI | fd207a3 |
-| 11 | Auto-Pipeline: Plan → DAG execute | (post fd207a3) |
-| 12 | Artifact tracking (ArtifactLog, ArtifactTracker) | — |
-| 13 | Project context en shared memory | — |
-| 14 | DAG paralelo (tokio::spawn, depends_on) | — |
-| 15 | Session memory (merab sessions, merab continue) | fea9cf3 |
+| Sprint | Feature |
+|--------|---------|
+| 10 | Base: daemon, CLI, agentes MCP, chat TUI |
+| 11 | Auto-Pipeline: Plan → DAG execute |
+| 12 | Artifact tracking (ArtifactLog, ArtifactTracker) |
+| 13 | Project context en shared memory |
+| 14 | DAG paralelo (tokio::spawn, depends_on) |
+| 15 | Session memory (merab sessions, merab continue) |
+| 16 | Per-persona API keys |
+| 17 | Streaming output (event_tail, orchestrate_stream) |
+| 18 | Token & cost tracking (tokens_input/output, cost_usd) |
+| 19 | Test loop (auto-fix con test runner) |
+| 20 | Background tasks (merab ask --bg, merab jobs) |
+| 21 | Rate limit resilience (retry exponencial) |
+| 22 | Config CLI (merab config list/get/set/edit) |
+| 23 | Code review (merab review) |
+| 24 | HTTP agent (merab-http crate) |
+| 25 | Project instructions (merab.md / AGENTS.md) |
+| 26 | Watch mode (merab watch) |
+| 27 | Doctor (merab doctor) |
+| 28 | Chat persistence (conversations en SQLite) |
+| 29 | Unit tests (store + core) |
+| 30 | Codebase index (merab index build/search) |
+| 31 | Diff editing (merab-fs patch) |
+| 32 | Self-upgrade (merab self-upgrade) |
+| 33 | Multi-project (merab projects list, merab switch) |
 
 ---
 
 ## Sprints pendientes (ver plans/)
 
-| Sprint | Archivo | Dificultad | Descripción |
-|--------|---------|------------|-------------|
-| 16 | sprint-16-per-persona-api-keys.md | Fácil (~30 líneas) | API key distinta por persona |
-| 17 | sprint-17-streaming-output.md | Media | Output en tiempo real |
-| 18 | sprint-18-token-cost-tracking.md | Media | Tokens y costo por sesión |
-| 19 | sprint-19-test-loop.md | Difícil | Auto-fix con test runner |
-| 20 | sprint-20-background-tasks.md | Difícil | merab ask --bg, merab jobs |
-| 21 | sprint-21-rate-limit-resilience.md | Fácil | Retry exponencial en 429 |
-
-**Orden recomendado:** 16 → 21 → 17 → 19 → 18 → 20
+| Sprint | Archivo | Descripción |
+|--------|---------|-------------|
+| 34 | sprint-34-slash-commands.md | Slash commands en chat |
 
 ---
 
@@ -242,6 +253,11 @@ merab memory get/put/list/delete  # gestión de shared memory
 merab config ...               # gestión de configuración
 merab watch -t "tarea" -p "**/*.rs"  # re-ejecuta tarea al detectar cambios
 merab review                   # review de código con IA
+merab self-upgrade "mejora"    # se mejora a sí mismo con IA
+
+# Multi-proyecto
+merab projects list            # lista proyectos conocidos
+merab switch <path>            # cambia proyecto activo (override CWD)
 ```
 
 ---

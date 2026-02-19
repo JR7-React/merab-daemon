@@ -198,15 +198,19 @@ impl MerabConfig {
                 defaults.ai.retry_base_delay_ms as i64,
             )?;
 
-        // 2. Load from config file (if exists)
+        // 2. Load from global config file (if exists)
         if let Some(config_dir) = dirs::config_dir() {
-            let config_path = config_dir.join("merab").join("config.toml");
+            let merab_dir = config_dir.join("merab");
+            let config_path = merab_dir.join("config.toml");
+            let alt_path = merab_dir.join("merab.toml");
             if config_path.exists() {
                 builder = builder.add_source(File::from(config_path));
+            } else if alt_path.exists() {
+                builder = builder.add_source(File::from(alt_path));
             }
         }
 
-        // Also check current directory
+        // 3. Load from current directory (overrides global)
         if std::path::Path::new("merab.toml").exists() {
             builder = builder.add_source(File::from(std::path::Path::new("merab.toml")));
         }

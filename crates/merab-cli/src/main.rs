@@ -127,14 +127,17 @@ enum Commands {
     Ask {
         #[arg(index = 1)]
         question: String,
-
         /// Run tests automatically and fix failures
         #[arg(long, short)]
         test: bool,
+        /// Run in background (returns job ID immediately)
+        #[arg(long)]
+        bg: bool,
     },
 
-    // #[command(about = "Job management")]
-    // Jobs(JobsCommands),
+    /// Manage background jobs
+    #[command(subcommand)]
+    Jobs(JobsCommands),
 
     #[command(about = "Ask AI to create a plan for a task")]
     Plan {
@@ -188,14 +191,29 @@ enum MemoryCommands {
     },
 }
 
-// TODO: Enable JobsCommands when clap issue is resolved
-// #[derive(Subcommand)]
-// enum JobsCommands {
-//     List,
-//     Log { id: String },
-//     Wait { id: String },
-//     Cancel { id: String },
-// }
+#[derive(Subcommand)]
+enum JobsCommands {
+    /// List all background jobs
+    List {
+        #[arg(long, default_value = "20")]
+        limit: u32,
+    },
+    /// Show log output of a job
+    Log {
+        /// Job ID
+        id: String,
+    },
+    /// Wait until a job completes
+    Wait {
+        /// Job ID
+        id: String,
+    },
+    /// Cancel a running job
+    Cancel {
+        /// Job ID
+        id: String,
+    },
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -429,31 +447,39 @@ async fn main() -> Result<()> {
             chat_ui::start_chat_session(&ready_client).await?;
         }
 
-        Commands::Ask { question, test } => {
+        Commands::Ask { question, test, bg } => {
             let ready_client = bootstrap::ensure_ready(&cli.url).await?;
-            
+
+            if bg {
+                match ready_client.job_submit(&question).await {
+                    Ok(job_id) => println!("Job submitted: {}\nUse `merab jobs log {}` to follow progress.", job_id, job_id),
+                    Err(e) => eprintln!("Error: {}", e),
+                }
+                return Ok(());
+            }
+
             let event_file = std::env::temp_dir().join(format!("merab-events-{}.jsonl", std::process::id()));
             let event_file_str = event_file.to_string_lossy().to_string();
-            
+
             let running = Arc::new(AtomicBool::new(true));
             let tail_handle = event_tail::start_event_tail(&event_file, running.clone());
-            
+
             let result = if test {
                 ready_client.ai_orchestrate_with_tests(&question, &event_file_str).await
             } else {
                 ready_client.ai_orchestrate_stream(&question, &event_file_str).await
             };
-            
+
             running.store(false, Ordering::Relaxed);
             let _ = tail_handle.join();
-            
+
             let _ = std::fs::remove_file(&event_file);
-            
+
             match result {
                 Ok(resp) => {
                     if let Some(usage) = &resp.usage {
-                        println!("\nTokens: {} input / {} output", 
-                            format_number(usage.input), 
+                        println!("\nTokens: {} input / {} output",
+                            format_number(usage.input),
                             format_number(usage.output));
                         if let Some(cost) = merab_core::estimate_cost(&usage.model, usage.input, usage.output) {
                             println!("Costo estimado: ${:.4}", cost);
@@ -467,8 +493,70 @@ async fn main() -> Result<()> {
             }
         }
 
-        // Commands::Jobs disabled due to clap issue
-        // Commands::Jobs(cmd) => { ... }
+        Commands::Jobs(cmd) => {
+            let ready_client = bootstrap::ensure_ready(&cli.url).await?;
+            match cmd {
+                JobsCommands::List { limit } => {
+                    match ready_client.job_list(Some(limit)).await {
+                        Ok(jobs) if jobs.is_empty() => println!("No hay jobs activos."),
+                        Ok(jobs) => {
+                            println!("{:<38} {:<12} {:<20} {}", "JOB ID", "ESTADO", "CREADO", "TAREA");
+                            println!("{}", "─".repeat(100));
+                            for j in jobs {
+                                let task_preview = if j.task.len() > 30 {
+                                    format!("{}...", &j.task[..30])
+                                } else {
+                                    j.task.clone()
+                                };
+                                println!("{:<38} {:<12} {:<20} {}", j.id, j.status, j.created_at, task_preview);
+                            }
+                        }
+                        Err(e) => eprintln!("Error: {}", e),
+                    }
+                }
+                JobsCommands::Log { id } => {
+                    match ready_client.job_log(&id).await {
+                        Ok(log) => print!("{}", log),
+                        Err(e) => eprintln!("Error: {}", e),
+                    }
+                }
+                JobsCommands::Wait { id } => {
+                    println!("Esperando job {}...", id);
+                    loop {
+                        match ready_client.job_status(&id).await {
+                            Ok(Some(job)) => {
+                                if job.status == "completed" || job.status == "failed" || job.status == "cancelled" {
+                                    println!("Job {}: {}", id, job.status);
+                                    if let Some(secs) = job.duration_secs {
+                                        println!("Duración: {}s", secs);
+                                    }
+                                    break;
+                                }
+                                print!(".");
+                                use std::io::Write;
+                                std::io::stdout().flush()?;
+                                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                            }
+                            Ok(None) => {
+                                eprintln!("Job {} no encontrado.", id);
+                                break;
+                            }
+                            Err(e) => {
+                                eprintln!("Error: {}", e);
+                                break;
+                            }
+                        }
+                    }
+                }
+                JobsCommands::Cancel { id } => {
+                    match ready_client.job_cancel(&id).await {
+                        Ok(true) => println!("Job {} cancelado.", id),
+                        Ok(false) => println!("No se pudo cancelar job {} (¿ya terminó?).", id),
+                        Err(e) => eprintln!("Error: {}", e),
+                    }
+                }
+            }
+        }
 
         Commands::Plan { task } => {
             let ready_client = bootstrap::ensure_ready(&cli.url).await?;

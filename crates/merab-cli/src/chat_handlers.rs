@@ -245,8 +245,8 @@ pub async fn handle_enter(
                     KeyCode::Down if key.modifiers.contains(KeyModifiers::ALT) => {
                          *sidebar_scroll = sidebar_scroll.saturating_add(1);
                     }
-                    KeyCode::Up => if *scroll_offset > 0 { *scroll_offset -= 1; },
-                    KeyCode::Down => *scroll_offset = scroll_offset.saturating_add(1),
+                    KeyCode::Up => *scroll_offset = scroll_offset.saturating_add(1),
+                    KeyCode::Down => if *scroll_offset > 0 { *scroll_offset -= 1; },
                     _ => {}
                 }
             }

@@ -64,6 +64,8 @@ pub struct ChatCompletionRequest {
     pub messages: Vec<ChatMessage>,
     pub max_tokens: u32,
     pub temperature: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream: Option<bool>,
 }
 
 /// A single choice returned by the LLM.
@@ -84,6 +86,21 @@ pub struct ChatCompletionResponse {
     pub choices: Vec<ChatChoice>,
     pub model: Option<String>,
     pub usage: Option<ApiResponseUsage>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ChatCompletionChunkDelta {
+    pub content: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ChatCompletionChunkChoice {
+    pub delta: ChatCompletionChunkDelta,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ChatCompletionChunk {
+    pub choices: Vec<ChatCompletionChunkChoice>,
 }
 
 #[derive(Debug, Deserialize)]

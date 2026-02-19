@@ -8,6 +8,7 @@ use merab_core::MerabError;
 use merab_store::Database;
 use jsonrpsee::types::ErrorObjectOwned;
 use tokio::sync::Mutex;
+use futures::StreamExt;
 
 use crate::artifacts::ArtifactTracker;
 use crate::events::EventSink;
@@ -213,11 +214,14 @@ async fn execute_subtask(
     let mut total_output: u64 = 0;
 
     for _step in 0..max_steps {
-        let chat_result = client.chat(messages.clone()).await;
+        let chat_result = client.chat_stream(messages.clone()).await;
+
+        // We need this outside the match block so it outlives the returned stream
+        let mut fallback_client_storage = None;
 
         // On RateLimited, attempt key rotation before giving up.
-        let response = match chat_result {
-            Ok(r) => r,
+        let stream = match chat_result {
+            Ok(s) => s,
             Err(AiError::RateLimited { attempts, ref message }) => {
                 tracing::warn!(
                     persona = %subtask.persona,
@@ -226,7 +230,7 @@ async fn execute_subtask(
                 );
 
                 let mut rotated = false;
-                let mut rotated_response = None;
+                let mut rotated_stream = None;
 
                 for (i, fallback_key) in fallback_keys.iter().enumerate() {
                     if let Some(ref sink) = event_sink {
@@ -237,16 +241,19 @@ async fn execute_subtask(
                         retry: RetryConfig::new(1, config.ai.retry_base_delay_ms),
                         ..ai_config.clone()
                     });
-                    if let Ok(r) = fallback_client.chat(messages.clone()).await {
+                    
+                    fallback_client_storage = Some(fallback_client);
+                    
+                    if let Ok(s) = fallback_client_storage.as_ref().unwrap().chat_stream(messages.clone()).await {
                         tracing::info!(persona = %subtask.persona, "key rotation succeeded");
                         rotated = true;
-                        rotated_response = Some(r);
+                        rotated_stream = Some(s);
                         break;
                     }
                 }
 
                 if rotated {
-                    rotated_response.unwrap()
+                    rotated_stream.unwrap()
                 } else {
                     return Err(to_rpc_error(MerabError::AiError(format!(
                         "Rate limited after {} attempts, key rotation failed: {}",
@@ -257,10 +264,41 @@ async fn execute_subtask(
             Err(e) => return Err(to_rpc_error(MerabError::AiError(e.to_string()))),
         };
 
-        if let Some(ref usage) = response.usage {
-            total_input += usage.input;
-            total_output += usage.output;
+        let mut full_content = String::new();
+        let mut last_emit = std::time::Instant::now();
+        let mut pinned_stream = Box::pin(stream);
+
+        while let Some(chunk_res) = pinned_stream.next().await {
+            match chunk_res {
+                Ok(chunk) => {
+                    let chunk_str: String = chunk;
+                    full_content.push_str(&chunk_str);
+                    if let Some(ref sink) = event_sink {
+                        if last_emit.elapsed().as_millis() > 100 {
+                            sink.emit_step(subtask.persona.as_str(), &full_content);
+                            last_emit = std::time::Instant::now();
+                        }
+                    }
+                }
+                Err(e) => {
+                    let err_msg = e.to_string();
+                    return Err(to_rpc_error(MerabError::AiError(err_msg)));
+                }
+            }
         }
+
+        // Final emit
+        if let Some(ref sink) = event_sink {
+             sink.emit_step(subtask.persona.as_str(), &full_content);
+        }
+
+        let response = client.parse_streamed_response(full_content);
+
+        // Approximate token usage since SSE doesn't provide standard usage blocks
+        let approx_input = messages.iter().map(|m| m.content.len() as u64 / 4).sum::<u64>();
+        let approx_output = response.content.len() as u64 / 4;
+        total_input += approx_input;
+        total_output += approx_output;
 
         if response.tool_call.is_none() {
             output = response.content.clone();

@@ -118,7 +118,7 @@ pub fn render_feed(
     let mut lines: Vec<Line> = vec![];
     let max_width = area.width.saturating_sub(6) as usize;
 
-    for msg in messages.iter().skip(scroll) {
+    for msg in messages.iter() {
         match &msg.role {
             merab_ai::ChatRole::User => {
                 lines.push(Line::from(""));
@@ -189,9 +189,15 @@ pub fn render_feed(
         }
     }
 
+    let total_lines = lines.len() as u16;
+    let view_height = area.height.saturating_sub(2);
+    let max_scroll = total_lines.saturating_sub(view_height);
+    let actual_scroll = max_scroll.saturating_sub(scroll as u16);
+
     let paragraph = Paragraph::new(lines)
         .block(block)
-        .wrap(Wrap { trim: false });
+        .wrap(Wrap { trim: false })
+        .scroll((actual_scroll, 0));
     f.render_widget(paragraph, area);
 }
 
@@ -263,7 +269,7 @@ pub fn render_sidebar(
         )]),
     ];
 
-    for (done, task) in tasks.iter().take(6) {
+    for (done, task) in tasks.iter() {
         let check = if *done { "✓" } else { "·" };
         let style = if *done {
             Style::default().fg(Color::Green)

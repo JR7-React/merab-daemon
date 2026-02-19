@@ -234,19 +234,19 @@ async fn run_app(
                     *sidebar_scroll = sidebar_scroll.saturating_add(1);
                 }
                 KeyCode::Up => {
+                    *scroll_offset = scroll_offset.saturating_add(1);
+                }
+                KeyCode::Down => {
                     if *scroll_offset > 0 {
                         *scroll_offset -= 1;
                     }
                 }
-                KeyCode::Down => {
-                    *scroll_offset = scroll_offset.saturating_add(1);
-                }
                 KeyCode::Esc => return Ok(()),
                 KeyCode::PageUp => {
-                    *scroll_offset = scroll_offset.saturating_sub(10);
+                    *scroll_offset = scroll_offset.saturating_add(10);
                 }
                 KeyCode::PageDown => {
-                    *scroll_offset = scroll_offset.saturating_add(10);
+                    *scroll_offset = scroll_offset.saturating_sub(10);
                 }
                 _ => {}
             }

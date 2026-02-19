@@ -8,6 +8,8 @@ use crate::types::{
     ToolCall,
 };
 use merab_core::TokenUsage;
+use futures_util::StreamExt;
+use eventsource_stream::Eventsource;
 
 pub struct AiClient {
     http: HttpClient,
@@ -71,6 +73,7 @@ impl AiClient {
             messages: all_messages,
             max_tokens: self.config.max_tokens,
             temperature: self.config.temperature,
+            stream: None,
         };
 
         let url = format!(
@@ -104,6 +107,109 @@ impl AiClient {
         self.chat(vec![ChatMessage::user(question)]).await
     }
 
+    pub async fn chat_stream(
+        &self,
+        messages: Vec<ChatMessage>,
+    ) -> Result<impl futures_util::Stream<Item = Result<String, AiError>> + Send + 'static, AiError> {
+        let max_attempts = self.config.retry.max_attempts;
+        let mut last_error = None;
+
+        for attempt in 0..max_attempts {
+            match self.chat_stream_once(messages.clone()).await {
+                Ok(stream) => return Ok(stream),
+                Err(ref e) if RetryConfig::is_retriable(&e.to_string()) => {
+                    let delay = self.config.retry.delay_for_attempt(attempt);
+                    tracing::warn!(
+                        attempt = attempt + 1,
+                        max_attempts = max_attempts,
+                        delay_ms = delay.as_millis(),
+                        "rate limited or service unavailable, retrying stream..."
+                    );
+                    tokio::time::sleep(delay).await;
+                    last_error = Some(e.to_string());
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        Err(AiError::RateLimited {
+            attempts: max_attempts,
+            message: last_error.unwrap_or_else(|| "max attempts exceeded".into()),
+        })
+    }
+
+    /// Stream the response lazily returning parsed chunks.
+    pub async fn chat_stream_once(
+        &self,
+        messages: Vec<ChatMessage>,
+    ) -> Result<impl futures_util::Stream<Item = Result<String, AiError>> + Send + 'static, AiError> {
+        let mut all_messages = Vec::new();
+
+        if let Some(sys) = &self.system_prompt {
+            all_messages.push(ChatMessage::system(sys.clone()));
+        }
+        all_messages.extend(messages);
+
+        let request = ChatCompletionRequest {
+            model: self.config.model.clone(),
+            messages: all_messages,
+            max_tokens: self.config.max_tokens,
+            temperature: self.config.temperature,
+            stream: Some(true),
+        };
+
+        let url = format!(
+            "{}/v1/chat/completions",
+            self.config.proxy_url.trim_end_matches('/')
+        );
+
+        tracing::debug!(url = %url, model = %request.model, "sending streaming chat request");
+
+        let mut builder = self.http.post(&url).json(&request);
+        if let Some(key) = &self.config.api_key {
+            builder = builder.header("Authorization", format!("Bearer {}", key));
+        }
+        let resp = builder.send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(AiError::InvalidResponse(format!(
+                "HTTP {}: {}",
+                status, body
+            )));
+        }
+
+        let stream = resp
+            .bytes_stream()
+            .eventsource()
+            .map(|event_result| match event_result {
+                Ok(event) => {
+                    let data = event.data;
+                    if data == "[DONE]" {
+                        return Ok("".to_string());
+                    }
+                    match serde_json::from_str::<crate::types::ChatCompletionChunk>(&data) {
+                        Ok(chunk) => {
+                            if let Some(choice) = chunk.choices.first() {
+                                if let Some(content) = &choice.delta.content {
+                                    return Ok(content.clone());
+                                }
+                            }
+                            Ok("".to_string())
+                        }
+                        Err(e) => Err(AiError::InvalidResponse(format!(
+                            "Failed to parse SSE chunk: {} (data: {})",
+                            e, data
+                        ))),
+                    }
+                }
+                Err(e) => Err(AiError::InvalidResponse(format!("SSE stream error: {}", e))),
+            });
+
+        Ok(stream)
+    }
+
     fn parse_response(&self, resp: ChatCompletionResponse) -> Result<AiResponse, AiError> {
         let choice = resp.choices.first().ok_or(AiError::EmptyResponse)?;
         let content = choice.message.content.clone().unwrap_or_default();
@@ -125,6 +231,18 @@ impl AiClient {
             artifacts: None,
             usage,
         })
+    }
+
+    /// Extract AI response structure from full accumulated string
+    pub fn parse_streamed_response(&self, content: String) -> AiResponse {
+        let tool_call = Self::extract_tool_call(&content);
+        AiResponse {
+            content,
+            model: Some(self.config.model.clone()),
+            tool_call,
+            artifacts: None,
+            usage: None,
+        }
     }
 
     /// Attempt to extract a `{"tool_call": {"name": "...", "arguments": {...}}}` from content.

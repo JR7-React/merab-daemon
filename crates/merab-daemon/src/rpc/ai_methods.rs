@@ -198,6 +198,8 @@ pub async fn handle_ai_orchestrate(
         }
     }
 
+    event_sink.emit_done();
+
     Ok(AiResponse {
         content,
         model: Some(config.ai.model.clone()),

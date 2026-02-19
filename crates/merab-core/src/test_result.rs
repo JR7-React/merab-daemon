@@ -25,36 +25,29 @@ impl TestRunResult {
         }
     }
 
+    /// No test runner detected — treat as success so fix cycles are not triggered.
     pub fn no_tests_found(output: String) -> Self {
         Self {
             passed: 0,
             failed: 0,
             output,
-            success: false,
+            success: true,
         }
     }
 }
 
 fn extract_test_count(output: &str, kind: &str) -> u32 {
-    for line in output.lines() {
-        if line.contains(kind) {
-            if let Some(num) = line.split_whitespace().find_map(|w| w.parse::<u32>().ok()) {
-                return num;
+    // Look for "<N> <kind>" pattern — number immediately before the keyword.
+    // e.g. "5 passed; 0 failed" → for "failed" returns 0, not 5.
+    let words: Vec<&str> = output.split_whitespace().collect();
+    for (i, word) in words.iter().enumerate() {
+        if word.to_lowercase().contains(kind) && i > 0 {
+            let prev = words[i - 1].trim_end_matches(';').trim_end_matches(',');
+            if let Ok(n) = prev.parse::<u32>() {
+                return n;
             }
         }
     }
-
-    if output.contains("ok.") || output.contains("PASSED") || output.contains("passed") {
-        if kind == "passed" {
-            return 1;
-        }
-    }
-    if output.contains("FAILED") || output.contains("FAIL") || output.contains("failed") {
-        if kind == "failed" {
-            return 1;
-        }
-    }
-
     0
 }
 

@@ -15,6 +15,7 @@ mod jobs_cmd;
 mod project_context;
 mod review;
 mod sessions_cmd;
+mod slash_commands;
 mod watch;
 
 use std::path::PathBuf;

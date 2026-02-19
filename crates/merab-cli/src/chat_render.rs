@@ -1,7 +1,7 @@
 use std::env;
 
-use crossterm::style::{Color as CColor, Print, ResetColor, SetForegroundColor};
 use crossterm::execute;
+use crossterm::style::{Color as CColor, Print, ResetColor, SetForegroundColor};
 use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
@@ -103,7 +103,9 @@ pub fn render_feed(
         .title(Line::from(vec![
             Span::styled(
                 " Feed ",
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
                 format!("({} msgs)", messages.len()),
@@ -124,7 +126,9 @@ pub fn render_feed(
                     Span::styled("╭── ", Style::default().fg(Color::Cyan)),
                     Span::styled(
                         "You",
-                        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
                     ),
                 ]));
                 for line in msg.content.lines().take(100) {
@@ -144,7 +148,9 @@ pub fn render_feed(
                     Span::styled("╭── ", Style::default().fg(Color::Green)),
                     Span::styled(
                         "Merab",
-                        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD),
                     ),
                 ]));
                 for line in msg.content.lines().take(100) {
@@ -158,7 +164,28 @@ pub fn render_feed(
                 }
                 lines.push(Line::from("╰──"));
             }
-            _ => {}
+            merab_ai::ChatRole::System => {
+                lines.push(Line::from(""));
+                lines.push(Line::from(vec![
+                    Span::styled("╭── ", Style::default().fg(Color::Yellow)),
+                    Span::styled(
+                        "System",
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                ]));
+                for line in msg.content.lines().take(100) {
+                    let chars: Vec<char> = line.chars().collect();
+                    for chunk in chars.chunks(max_width.max(20)) {
+                        lines.push(Line::from(vec![
+                            Span::styled("│  ", Style::default().fg(Color::DarkGray)),
+                            Span::raw(chunk.iter().collect::<String>()),
+                        ]));
+                    }
+                }
+                lines.push(Line::from("╰──"));
+            }
         }
     }
 
@@ -179,15 +206,25 @@ pub fn render_sidebar(
     scroll: usize,
     scrollbar_state: &mut ScrollbarState,
 ) {
-    let status_text = if is_processing { "● Processing..." } else { "● Ready" };
-    let status_color = if is_processing { Color::Yellow } else { Color::Green };
+    let status_text = if is_processing {
+        "● Processing..."
+    } else {
+        "● Ready"
+    };
+    let status_color = if is_processing {
+        Color::Yellow
+    } else {
+        Color::Green
+    };
     let max_task_len = area.width.saturating_sub(8) as usize;
 
     let mut all_lines = vec![
         Line::from(""),
         Line::from(vec![Span::styled(
             " MERAB",
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
         )]),
         Line::from(vec![Span::styled(
             " AI Agent Runtime",
@@ -196,7 +233,9 @@ pub fn render_sidebar(
         Line::from(""),
         Line::from(vec![Span::styled(
             "Status",
-            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
         )]),
         Line::from(vec![
             Span::styled("  Model: ", Style::default().fg(Color::DarkGray)),
@@ -218,7 +257,9 @@ pub fn render_sidebar(
         Line::from(""),
         Line::from(vec![Span::styled(
             "Tasks",
-            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
         )]),
     ];
 
@@ -245,7 +286,9 @@ pub fn render_sidebar(
         Span::styled("▼ ", Style::default().fg(Color::Blue)),
         Span::styled(
             "Modified Files",
-            Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Blue)
+                .add_modifier(Modifier::BOLD),
         ),
     ]));
 
@@ -269,7 +312,11 @@ pub fn render_sidebar(
     let total_lines = all_lines.len();
     *scrollbar_state = scrollbar_state.content_length(total_lines);
 
-    let visible_lines: Vec<Line> = all_lines.into_iter().skip(scroll).take(visible_lines_count).collect();
+    let visible_lines: Vec<Line> = all_lines
+        .into_iter()
+        .skip(scroll)
+        .take(visible_lines_count)
+        .collect();
 
     let block = Block::default()
         .borders(Borders::LEFT)
@@ -282,7 +329,10 @@ pub fn render_sidebar(
             .orientation(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some("▲"))
             .end_symbol(Some("▼")),
-        area.inner(ratatui::layout::Margin { vertical: 0, horizontal: 0 }),
+        area.inner(ratatui::layout::Margin {
+            vertical: 0,
+            horizontal: 0,
+        }),
         scrollbar_state,
     );
 }
@@ -314,7 +364,9 @@ pub fn render_input(f: &mut ratatui::Frame, area: Rect, input: &str, is_processi
         Span::raw(input),
         Span::styled(
             cursor,
-            Style::default().fg(Color::White).add_modifier(Modifier::SLOW_BLINK),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::SLOW_BLINK),
         ),
     ])];
 
@@ -339,4 +391,47 @@ pub fn render_status_bar(f: &mut ratatui::Frame, area: Rect, model: &str) {
         Paragraph::new(line).style(Style::default().bg(Color::Black)),
         area,
     );
+}
+
+pub fn render_slash_popup(
+    f: &mut ratatui::Frame,
+    area: Rect,
+    completions: &[crate::slash_commands::SlashCommandDef],
+    selected: usize,
+) {
+    if completions.is_empty() {
+        return;
+    }
+
+    let max_visible = 8.min(completions.len());
+    let popup_height = (max_visible + 2) as u16;
+    let popup_width = 50;
+
+    let popup_area = Rect {
+        x: area.x,
+        y: area.y.saturating_sub(popup_height),
+        width: popup_width.min(area.width),
+        height: popup_height,
+    };
+
+    let block = Block::default()
+        .title(" Commands ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let mut lines = vec![];
+    for (i, cmd) in completions.iter().take(max_visible).enumerate() {
+        let style = if i == selected {
+            Style::default().fg(Color::Black).bg(Color::Cyan)
+        } else {
+            Style::default().fg(Color::White)
+        };
+        lines.push(Line::from(vec![
+            Span::styled(format!("/{}", cmd.name), style),
+            Span::styled(format!(" - {}", cmd.description), style),
+        ]));
+    }
+
+    let paragraph = Paragraph::new(lines).block(block);
+    f.render_widget(paragraph, popup_area);
 }

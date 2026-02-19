@@ -106,17 +106,31 @@ pub async fn dispatch(command: Commands, client: MerabClient, url: &str) -> Resu
             jobs_cmd::run(&ready_client, cmd).await?;
         }
 
-        Commands::Plan { task: _ } => {
-            println!("Plan command not yet implemented in this version");
+        Commands::Plan { task } => {
+            let ready_client = bootstrap::ensure_ready(url).await?;
+            match ready_client.ai_plan(&task).await {
+                Ok(plan) => {
+                    println!("Generated plan:");
+                    println!("{}", serde_json::to_string_pretty(&plan)?);
+                }
+                Err(e) => eprintln!("Error generating plan: {}", e),
+            }
         }
 
-        Commands::ExecutePlan { plan_json: _ } => {
-            println!("ExecutePlan command not yet implemented in this version");
+        Commands::ExecutePlan { plan_json } => {
+            let ready_client = bootstrap::ensure_ready(url).await?;
+            match ready_client.ai_execute_plan(&plan_json).await {
+                Ok(result) => {
+                    println!("Plan execution result:");
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                }
+                Err(e) => eprintln!("Error executing plan: {}", e),
+            }
         }
 
         Commands::Context => {
             let ctx = crate::project_context::ProjectContext::detect(std::path::Path::new("."));
-            println!("{}", serde_json::to_string_pretty(&ctx)?);
+            ctx.display();
         }
 
         Commands::Sessions { limit } => {

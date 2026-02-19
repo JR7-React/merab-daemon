@@ -15,8 +15,9 @@ use ratatui::{
 
 use crate::chat_render::{
     render_feed, render_input, render_sidebar, render_status_bar, restore_console_mouse_selection,
-    print_splash,
+    print_splash, render_slash_popup,
 };
+use crate::slash_commands::{self, SlashCommandResult};
 use crate::client::MerabClient;
 use crate::git_utils::{self, GitFileStat};
 
@@ -101,8 +102,22 @@ async fn run_app(
 ) -> anyhow::Result<()> {
     let mut sidebar_scrollbar_state =
         ScrollbarState::default().content_length(tasks.len() + repo_status.len() + 10);
+    
+    // Slash command completion state
+    let mut slash_completions: Vec<slash_commands::SlashCommandDef> = Vec::new();
+    let mut slash_selected: usize = 0;
 
     loop {
+        // Update completions based on current input
+        if input.starts_with('/') && input.len() > 1 {
+            slash_completions = slash_commands::get_completions(input);
+            if slash_selected >= slash_completions.len() {
+                slash_selected = 0;
+            }
+        } else {
+            slash_completions.clear();
+        }
+
         terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
@@ -131,6 +146,12 @@ async fn run_app(
                 &mut sidebar_scrollbar_state,
             );
             render_input(f, chunks[1], input, *is_processing);
+            
+            // Render slash command popup if active
+            if !slash_completions.is_empty() {
+                render_slash_popup(f, chunks[1], &slash_completions, slash_selected);
+            }
+            
             render_status_bar(f, chunks[2], model);
         })?;
 
@@ -155,8 +176,33 @@ async fn run_app(
                 {
                     return Ok(());
                 }
-                KeyCode::Char(c) => input.push(c),
-                KeyCode::Backspace => { input.pop(); }
+                KeyCode::Char(c) => {
+                    input.push(c);
+                    slash_selected = 0;
+                }
+                KeyCode::Backspace => {
+                    input.pop();
+                    slash_selected = 0;
+                }
+                KeyCode::Tab => {
+                    // Accept current completion
+                    if !slash_completions.is_empty() {
+                        let cmd = &slash_completions[slash_selected];
+                        input.clear();
+                        input.push('/');
+                        input.push_str(&cmd.name);
+                        if cmd.needs_args {
+                            input.push(' ');
+                        }
+                        slash_completions.clear();
+                    }
+                }
+                KeyCode::Down if !slash_completions.is_empty() => {
+                    slash_selected = (slash_selected + 1).min(slash_completions.len() - 1);
+                }
+                KeyCode::Up if !slash_completions.is_empty() => {
+                    slash_selected = slash_selected.saturating_sub(1);
+                }
                 KeyCode::Enter => {
                     if handle_enter(
                         terminal,
@@ -228,23 +274,46 @@ async fn handle_enter(
         return Ok(false);
     }
 
-    // Slash commands
-    if input.starts_with("/quit") || input.starts_with("/q") || input.starts_with("/exit") {
-        return Ok(true);
-    }
-    if input.starts_with("/reset") {
-        context.clear();
-        messages.clear();
-        tasks.retain(|(done, _)| *done);
-        *scroll_offset = 0;
-        input.clear();
-        return Ok(false);
-    }
-    if input.starts_with("/clear") {
-        messages.clear();
-        *scroll_offset = 0;
-        input.clear();
-        return Ok(false);
+    // Handle slash commands
+    if input.starts_with('/') {
+        if let Some((cmd, args)) = slash_commands::parse_slash_input(input) {
+            match slash_commands::resolve_command(cmd) {
+                Some(name) => {
+                    let result = slash_commands::execute_slash_command(name, args, client).await;
+                    match result {
+                        SlashCommandResult::Exit => return Ok(true),
+                        SlashCommandResult::Output(lines) => {
+                            messages.push(ChatMessage::system(&lines.join("\n")));
+                        }
+                        SlashCommandResult::Error(msg) => {
+                            messages.push(ChatMessage::system(&format!("Error: {msg}")));
+                        }
+                        SlashCommandResult::Silent => {
+                            // Handle clear and reset specially
+                            if name == "clear" {
+                                messages.clear();
+                                *scroll_offset = 0;
+                            } else if name == "reset" {
+                                context.clear();
+                                messages.clear();
+                                tasks.retain(|(done, _)| *done);
+                                *scroll_offset = 0;
+                            }
+                        }
+                    }
+                    input.clear();
+                    return Ok(false);
+                }
+                None => {
+                    messages.push(ChatMessage::system(&format!(
+                        "Unknown command: /{}. Type /help for available commands.",
+                        cmd
+                    )));
+                    input.clear();
+                    return Ok(false);
+                }
+            }
+        }
     }
 
     let user_msg = input.clone();

@@ -53,6 +53,14 @@ const PRICING: &[(&str, f64, f64)] = &[
     // Claude 3 Haiku
     ("claude-3-haiku-20240307", 0.25, 1.25),
     ("claude-3-haiku", 0.25, 1.25),
+    // Google Gemini
+    ("gemini-2.5-flash", 0.15, 0.60),
+    ("gemini-2.5-pro", 1.25, 10.0),
+    ("gemini-2.0-flash", 0.10, 0.40),
+    // DeepSeek
+    ("deepseek-chat-v3", 0.27, 1.10),
+    ("deepseek-chat", 0.27, 1.10),
+    ("deepseek-r1", 0.55, 2.19),
 ];
 
 pub fn estimate_cost(model: &str, input_tokens: u64, output_tokens: u64) -> Option<f64> {

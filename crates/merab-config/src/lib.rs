@@ -97,28 +97,28 @@ impl Default for MerabConfig {
         personas.insert(
             "engineer".to_string(),
             PersonaModelConfig {
-                model: "qwen/qwen3-next-80b-a3b-instruct:free".to_string(),
+                model: "google/gemini-2.5-flash".to_string(),
                 api_key: None,
             },
         );
         personas.insert(
             "coder".to_string(),
             PersonaModelConfig {
-                model: "qwen/qwen3-coder:free".to_string(),
+                model: "deepseek/deepseek-chat-v3-0324".to_string(),
                 api_key: None,
             },
         );
         personas.insert(
             "reviewer".to_string(),
             PersonaModelConfig {
-                model: "deepseek/deepseek-r1-0528:free".to_string(),
+                model: "google/gemini-2.5-flash".to_string(),
                 api_key: None,
             },
         );
         personas.insert(
             "qa".to_string(),
             PersonaModelConfig {
-                model: "stepfun/step-3.5-flash:free".to_string(),
+                model: "google/gemini-2.5-flash".to_string(),
                 api_key: None,
             },
         );
@@ -141,11 +141,11 @@ impl Default for MerabConfig {
                 enabled: true,
             },
             ai: AiConfig {
-                model: "qwen/qwen3-coder:free".to_string(),
+                model: "google/gemini-2.5-flash".to_string(),
                 system_prompt:
                     "You are Merab, a helpful AI assistant that can orchestrate tools and agents."
                         .to_string(),
-                max_tokens: 1024,
+                max_tokens: 4096,
                 temperature: 0.7,
                 max_orchestration_steps: 10,
                 max_parallel_tasks: 4,

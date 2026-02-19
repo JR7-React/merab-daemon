@@ -1,9 +1,9 @@
 use anyhow::Result;
 use config::{Config, Environment, File};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MerabConfig {
     pub daemon: DaemonConfig,
     pub proxy: ProxyConfig,
@@ -11,7 +11,7 @@ pub struct MerabConfig {
     pub ai: AiConfig,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DaemonConfig {
     pub host: String,
     pub rpc_port: u16,
@@ -19,7 +19,7 @@ pub struct DaemonConfig {
     pub db_path: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ProxyConfig {
     pub enabled: bool,
     pub port: u16,
@@ -27,20 +27,20 @@ pub struct ProxyConfig {
     pub api_key: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SandboxConfig {
     pub memory_limit_mb: usize,
     pub enabled: bool,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PersonaModelConfig {
     pub model: String,
     #[serde(default)]
     pub api_key: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AiConfig {
     pub model: String,
     pub system_prompt: String,

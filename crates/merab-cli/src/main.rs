@@ -1,5 +1,6 @@
 mod bootstrap;
 mod client;
+mod config_cmd;
 mod git_utils;
 mod chat_ui;
 mod project_context;
@@ -169,6 +170,10 @@ enum Commands {
 
     #[command(about = "Show token usage and cost stats for the project")]
     Stats,
+
+    /// Manage Merab configuration
+    #[command(subcommand)]
+    Config(config_cmd::ConfigCommands),
 }
 
 #[derive(Subcommand)]
@@ -709,6 +714,16 @@ async fn main() -> Result<()> {
                     }
                 }
                 Err(e) => eprintln!("Error: {}", e),
+            }
+        }
+
+        Commands::Config(cmd) => {
+            match cmd {
+                config_cmd::ConfigCommands::List => config_cmd::config_list()?,
+                config_cmd::ConfigCommands::Get { key } => config_cmd::config_get(&key)?,
+                config_cmd::ConfigCommands::Set { key, value } => config_cmd::config_set(&key, &value)?,
+                config_cmd::ConfigCommands::Edit => config_cmd::config_edit()?,
+                config_cmd::ConfigCommands::Path => config_cmd::config_path()?,
             }
         }
 

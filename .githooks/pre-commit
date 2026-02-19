@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# pre-commit hook: enforces 500-line limit on .rs files
+# Install: git config core.hooksPath .githooks
+
+MAX_LINES=500
+FAILED=0
+
+# Get list of staged .rs files that exist (not deleted)
+STAGED=$(git diff --cached --name-only --diff-filter=d | grep '\.rs$')
+
+if [ -z "$STAGED" ]; then
+    exit 0
+fi
+
+for file in $STAGED; do
+    if [ ! -f "$file" ]; then
+        continue
+    fi
+    lines=$(awk 'END{print NR}' "$file")
+    if [ "$lines" -gt "$MAX_LINES" ]; then
+        echo "❌  $file  ($lines líneas, límite: $MAX_LINES)"
+        FAILED=1
+    fi
+done
+
+if [ "$FAILED" -eq 1 ]; then
+    echo ""
+    echo "  Archivos sobre el límite de ${MAX_LINES} líneas."
+    echo "  Extrae la lógica a un módulo nuevo antes de commitear:"
+    echo ""
+    echo "    # Patrón: lógica real en foo_impl.rs"
+    echo "    # dispatcher delgado en foo.rs que llama a foo_impl::"
+    echo ""
+    echo "  Para saltar el check en casos excepcionales (no recomendado):"
+    echo "    git commit --no-verify"
+    echo ""
+    exit 1
+fi
+
+exit 0

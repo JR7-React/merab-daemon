@@ -24,7 +24,9 @@ pub struct MerabClient {
 
 impl MerabClient {
     pub fn new(url: &str) -> Result<Self> {
-        let client = HttpClientBuilder::default().build(url)?;
+        let client = HttpClientBuilder::default()
+            .request_timeout(std::time::Duration::from_secs(600))
+            .build(url)?;
         Ok(Self { client })
     }
 

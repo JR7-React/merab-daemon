@@ -20,6 +20,7 @@ pub struct JobSummary {
 
 pub struct MerabClient {
     client: HttpClient,
+    url: String,
 }
 
 impl MerabClient {
@@ -27,7 +28,14 @@ impl MerabClient {
         let client = HttpClientBuilder::default()
             .request_timeout(std::time::Duration::from_secs(600))
             .build(url)?;
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            url: url.to_string(),
+        })
+    }
+
+    pub fn url(&self) -> &str {
+        &self.url
     }
 
     /// Get the current project path: active-project override or CWD.

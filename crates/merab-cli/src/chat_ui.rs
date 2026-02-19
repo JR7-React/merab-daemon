@@ -1,11 +1,16 @@
 use std::io;
 
+use crate::event_channel;
+
+
 use crossterm::{
+
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use merab_ai::ChatMessage;
+use merab_ai::{ChatMessage, ChatRole};
+
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
@@ -204,7 +209,8 @@ async fn run_app(
                     slash_selected = slash_selected.saturating_sub(1);
                 }
                 KeyCode::Enter => {
-                    if handle_enter(
+                    if crate::chat_handlers::handle_enter(
+
                         terminal,
                         client,
                         conv_id,
@@ -252,217 +258,4 @@ async fn run_app(
     }
 }
 
-/// Returns `true` if the caller should exit the event loop.
-#[allow(clippy::too_many_arguments)]
-async fn handle_enter(
-    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    client: &MerabClient,
-    conv_id: &str,
-    context: &mut Vec<ChatMessage>,
-    messages: &mut Vec<ChatMessage>,
-    input: &mut String,
-    model: &str,
-    tasks: &mut Vec<(bool, String)>,
-    tokens_used: &mut u64,
-    scroll_offset: &mut usize,
-    sidebar_scroll: &mut usize,
-    is_processing: &mut bool,
-    repo_status: &[GitFileStat],
-    sidebar_scrollbar_state: &mut ScrollbarState,
-) -> anyhow::Result<bool> {
-    if input.trim().is_empty() {
-        return Ok(false);
-    }
 
-    // Handle slash commands
-    if input.starts_with('/') {
-        if let Some((cmd, args)) = slash_commands::parse_slash_input(input) {
-            match slash_commands::resolve_command(cmd) {
-                Some(name) => {
-                    let result = slash_commands::execute_slash_command(name, args, client).await;
-                    match result {
-                        SlashCommandResult::Exit => return Ok(true),
-                        SlashCommandResult::Output(lines) => {
-                            messages.push(ChatMessage::system(&lines.join("\n")));
-                        }
-                        SlashCommandResult::Error(msg) => {
-                            messages.push(ChatMessage::system(&format!("Error: {msg}")));
-                        }
-                        SlashCommandResult::Silent => {
-                            // Handle clear and reset specially
-                            if name == "clear" {
-                                messages.clear();
-                                *scroll_offset = 0;
-                            } else if name == "reset" {
-                                context.clear();
-                                messages.clear();
-                                tasks.retain(|(done, _)| *done);
-                                *scroll_offset = 0;
-                            }
-                        }
-                    }
-                    input.clear();
-                    return Ok(false);
-                }
-                None => {
-                    messages.push(ChatMessage::system(&format!(
-                        "Unknown command: /{}. Type /help for available commands.",
-                        cmd
-                    )));
-                    input.clear();
-                    return Ok(false);
-                }
-            }
-        }
-    }
-
-    let user_msg = input.clone();
-    messages.push(ChatMessage::user(&user_msg));
-    tasks.push((false, format!("Process: {}", &user_msg[..user_msg.len().min(25)])));
-    input.clear();
-    *is_processing = true;
-    *scroll_offset = 0;
-
-    // Helper closure to redraw the terminal
-    let redraw = |terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-                  messages: &[ChatMessage],
-                  input: &str,
-                  model: &str,
-                  tasks: &[(bool, String)],
-                  tokens_used: u64,
-                  repo_status: &[GitFileStat],
-                  scroll_offset: usize,
-                  sidebar_scroll: usize,
-                  sidebar_scrollbar_state: &mut ScrollbarState| {
-        let _ = terminal.draw(|f| {
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Min(1), Constraint::Length(3), Constraint::Length(1)])
-                .split(f.area());
-            let main_chunks = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([Constraint::Percentage(75), Constraint::Percentage(25)])
-                .split(chunks[0]);
-            // We need owned copies for render since tasks is a slice
-            let mut tasks_vec: Vec<(bool, String)> = tasks.to_vec();
-            render_feed(f, main_chunks[0], messages, scroll_offset);
-            render_sidebar(f, main_chunks[1], model, &mut tasks_vec, tokens_used, true, repo_status, sidebar_scroll, sidebar_scrollbar_state);
-            render_input(f, chunks[1], input, true);
-            render_status_bar(f, chunks[2], model);
-        });
-    };
-
-    // Force redraw to show user message immediately
-    redraw(terminal, messages, input, model, tasks, *tokens_used, repo_status, *scroll_offset, *sidebar_scroll, sidebar_scrollbar_state);
-
-    // --- Agentic tool execution loop ---
-    let mut ai_context = context.clone();
-    ai_context.push(ChatMessage::user(&user_msg));
-
-    let mut final_response = String::new();
-    let mut step_tokens: u64 = 0;
-
-    for step in 0..10 {
-        let (current_msg, prev_ctx) = if ai_context.len() <= 1 {
-            (user_msg.clone(), context.clone())
-        } else {
-            let last = ai_context.last().cloned().unwrap_or(ChatMessage::user(""));
-            let prev = ai_context[..ai_context.len().saturating_sub(1)].to_vec();
-            (last.content.clone(), prev)
-        };
-
-        let resp = match client.ai_chat(&current_msg, prev_ctx).await {
-            Ok(r) => r,
-            Err(e) => {
-                messages.push(ChatMessage::assistant(&format!("Error: {}", e)));
-                break;
-            }
-        };
-
-        if let Some(usage) = &resp.usage {
-            step_tokens += (usage.input + usage.output) as u64;
-        }
-
-        if let Some(tool_call) = &resp.tool_call {
-            // Show tool call in progress
-            let tool_label = format!("🔧 {} ...", tool_call.name);
-            tasks.push((false, tool_label.clone()));
-            messages.push(ChatMessage::system(&format!("⚙ Ejecutando: {} ...", tool_call.name)));
-            redraw(terminal, messages, input, model, tasks, *tokens_used + step_tokens, repo_status, *scroll_offset, *sidebar_scroll, sidebar_scrollbar_state);
-
-            // Execute tool
-            ai_context.push(ChatMessage::assistant(&resp.content));
-            match client.ai_execute_tool(&tool_call.name, tool_call.arguments.clone()).await {
-                Ok(result) => {
-                    let result_str = serde_json::to_string(&result).unwrap_or_default();
-                    let short_result = if result_str.len() > 200 {
-                        format!("{}...", &result_str[..200])
-                    } else {
-                        result_str.clone()
-                    };
-
-                    // Update task as done and show result
-                    if let Some(last_task) = tasks.last_mut() {
-                        last_task.0 = true;
-                        last_task.1 = format!("✓ {}", tool_call.name);
-                    }
-                    // Replace the "executing" message with the result
-                    if let Some(last_msg) = messages.last_mut() {
-                        last_msg.content = format!("✓ {} → {}", tool_call.name, short_result);
-                    }
-
-                    ai_context.push(ChatMessage::user(format!(
-                        "Tool '{}': {}",
-                        tool_call.name, result_str
-                    )));
-                }
-                Err(e) => {
-                    if let Some(last_task) = tasks.last_mut() {
-                        last_task.0 = true;
-                        last_task.1 = format!("✗ {}", tool_call.name);
-                    }
-                    if let Some(last_msg) = messages.last_mut() {
-                        last_msg.content = format!("✗ {} falló: {}", tool_call.name, e);
-                    }
-                    ai_context.push(ChatMessage::user(format!(
-                        "Tool '{}' failed: {}",
-                        tool_call.name, e
-                    )));
-                }
-            }
-
-            // Redraw with updated status
-            redraw(terminal, messages, input, model, tasks, *tokens_used + step_tokens, repo_status, *scroll_offset, *sidebar_scroll, sidebar_scrollbar_state);
-            continue;
-        }
-
-        // No tool call = final answer
-        final_response = resp.content.clone();
-        break;
-    }
-
-    if final_response.is_empty() && step_tokens > 0 {
-        final_response = "Tarea completada.".to_string();
-    }
-
-    if !final_response.is_empty() {
-        messages.push(ChatMessage::assistant(&final_response));
-        context.push(ChatMessage::user(&user_msg));
-        context.push(ChatMessage::assistant(&final_response));
-    }
-
-    *tokens_used += step_tokens;
-    if let Some(last_task) = tasks.iter_mut().rev().find(|(done, t)| !done && t.starts_with("Process:")) {
-        last_task.0 = true;
-    }
-
-    if !conv_id.is_empty() {
-        let _ = client.conv_add_message(conv_id, "user", &user_msg).await;
-        if !final_response.is_empty() {
-            let _ = client.conv_add_message(conv_id, "assistant", &final_response).await;
-        }
-    }
-
-    *is_processing = false;
-    Ok(false)
-}

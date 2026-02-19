@@ -208,15 +208,40 @@ git commit -m "feat(sprint-XX): descripción"
 ## Comandos CLI disponibles
 
 ```bash
-merab                   # inicia chat interactivo
-merab ask "tarea"       # ejecuta tarea con pipeline Plan→DAG
-merab sessions          # lista sesiones del proyecto actual
-merab continue [id]     # retoma la última sesión (o por ID)
-merab plan "tarea"      # genera plan sin ejecutar
-merab context           # muestra contexto detectado del proyecto
-merab list              # lista agentes registrados
-merab monitor           # TUI de monitoreo en tiempo real
+# Uso principal
+merab                          # inicia chat interactivo
+merab ask "tarea"              # ejecuta tarea con pipeline Plan→DAG
+merab ask "tarea" --bg         # ejecuta en background
+merab plan "tarea"             # genera plan sin ejecutar
+merab sessions                 # lista sesiones del proyecto actual
+merab continue [id]            # retoma la última sesión (o por ID)
+
+# Diagnóstico y contexto
+merab context                  # muestra contexto detectado del proyecto
+merab doctor                   # verifica salud del sistema
+merab stats                    # estadísticas de uso
+merab monitor                  # TUI de monitoreo en tiempo real
+
+# Agentes y herramientas
+merab list                     # lista agentes registrados
+merab register <manifest>      # registra un agente MCP
+merab start/stop/status <id>   # gestión de agentes
+
+# Índice de código
+merab index build              # indexa el proyecto actual
+merab index search "query"     # busca símbolos por nombre
+merab index search -k struct "Config"  # filtra por tipo (fn, struct, trait, etc.)
+
+# Jobs en background
+merab jobs list                # lista jobs activos
+merab jobs status <id>         # estado de un job
+merab jobs cancel <id>         # cancela un job
+
+# Otros
 merab memory get/put/list/delete  # gestión de shared memory
+merab config ...               # gestión de configuración
+merab watch -t "tarea" -p "**/*.rs"  # re-ejecuta tarea al detectar cambios
+merab review                   # review de código con IA
 ```
 
 ---

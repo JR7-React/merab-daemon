@@ -8,6 +8,7 @@ pub enum Persona {
     Engineer,
     Coder,
     Reviewer,
+    #[serde(alias = "qa")]
     QA,
 }
 

@@ -116,6 +116,21 @@ pub trait MerabApi {
     #[method(name = "merab.session.stats")]
     async fn session_stats(&self, project_path: String) -> Result<ProjectStats, ErrorObjectOwned>;
 
+    #[method(name = "merab.conv.create")]
+    async fn conv_create(&self, project_path: String) -> Result<merab_store::ConvSummary, ErrorObjectOwned>;
+
+    #[method(name = "merab.conv.addMessage")]
+    async fn conv_add_message(&self, conv_id: String, role: String, content: String) -> Result<bool, ErrorObjectOwned>;
+
+    #[method(name = "merab.conv.getMessages")]
+    async fn conv_get_messages(&self, conv_id: String) -> Result<Vec<merab_store::ConvMessage>, ErrorObjectOwned>;
+
+    #[method(name = "merab.conv.list")]
+    async fn conv_list(&self, project_path: String, limit: u32) -> Result<Vec<merab_store::ConvSummary>, ErrorObjectOwned>;
+
+    #[method(name = "merab.conv.getLast")]
+    async fn conv_get_last(&self, project_path: String) -> Result<Option<merab_store::ConvSummary>, ErrorObjectOwned>;
+
     #[method(name = "merab.job.submit")]
     async fn job_submit(&self, task: String) -> Result<String, ErrorObjectOwned>;
 
@@ -337,6 +352,47 @@ impl MerabApiServer for MerabRpc {
             total_tokens_output: stats.total_tokens_output,
             total_cost_usd: stats.total_cost_usd,
         })
+    }
+
+    async fn conv_create(&self, project_path: String) -> Result<merab_store::ConvSummary, ErrorObjectOwned> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let db = self.db.lock().await;
+        db.create_conversation(&id, &project_path)
+            .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))?;
+        db.get_last_conversation(&project_path)
+            .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))?
+            .ok_or_else(|| to_rpc_error(MerabError::Store("Failed to get created conversation".to_string())))
+    }
+
+    async fn conv_add_message(&self, conv_id: String, role: String, content: String) -> Result<bool, ErrorObjectOwned> {
+        let db = self.db.lock().await;
+        db.add_message(&conv_id, &role, &content)
+            .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))?;
+        
+        if role == "user" {
+            let title = content.chars().take(50).collect::<String>();
+            let _ = db.update_conversation_title(&conv_id, &title);
+        }
+        
+        Ok(true)
+    }
+
+    async fn conv_get_messages(&self, conv_id: String) -> Result<Vec<merab_store::ConvMessage>, ErrorObjectOwned> {
+        let db = self.db.lock().await;
+        db.get_conversation_messages(&conv_id)
+            .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))
+    }
+
+    async fn conv_list(&self, project_path: String, limit: u32) -> Result<Vec<merab_store::ConvSummary>, ErrorObjectOwned> {
+        let db = self.db.lock().await;
+        db.list_conversations(&project_path, limit)
+            .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))
+    }
+
+    async fn conv_get_last(&self, project_path: String) -> Result<Option<merab_store::ConvSummary>, ErrorObjectOwned> {
+        let db = self.db.lock().await;
+        db.get_last_conversation(&project_path)
+            .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))
     }
 
     async fn job_submit(&self, task: String) -> Result<String, ErrorObjectOwned> {

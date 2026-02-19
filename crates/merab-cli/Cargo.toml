@@ -13,6 +13,7 @@ merab-transport = { path = "../merab-transport" }
 merab-tui = { path = "../merab-tui" }
 merab-ai = { path = "../merab-ai" }
 merab-config = { path = "../merab-config" }
+merab-store = { path = "../merab-store" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

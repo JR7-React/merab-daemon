@@ -127,6 +127,27 @@ impl Database {
 
             CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
             CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at);
+
+            CREATE TABLE IF NOT EXISTS conversations (
+                id          TEXT PRIMARY KEY,
+                project_path TEXT NOT NULL,
+                created_at  TEXT NOT NULL,
+                updated_at  TEXT NOT NULL,
+                title       TEXT,
+                message_count INTEGER DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS conversation_messages (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT NOT NULL,
+                role            TEXT NOT NULL,
+                content         TEXT NOT NULL,
+                created_at      TEXT NOT NULL,
+                FOREIGN KEY (conversation_id) REFERENCES conversations(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_conv_project
+                ON conversations(project_path, updated_at DESC);
             ",
         )?;
 

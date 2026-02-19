@@ -21,6 +21,14 @@ use crate::client::MerabClient;
 use crate::git_utils::{self, GitFileStat};
 
 pub async fn start_chat_session(client: &MerabClient) -> anyhow::Result<()> {
+    start_chat_session_with_history(client, "", Vec::new()).await
+}
+
+pub async fn start_chat_session_with_history(
+    client: &MerabClient,
+    conv_id: &str,
+    history: Vec<ChatMessage>,
+) -> anyhow::Result<()> {
     print_splash()?;
 
     let status = client.get_system_status().await?;
@@ -35,7 +43,7 @@ pub async fn start_chat_session(client: &MerabClient) -> anyhow::Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let mut context: Vec<ChatMessage> = Vec::new();
-    let mut messages: Vec<ChatMessage> = Vec::new();
+    let mut messages: Vec<ChatMessage> = history;
     let mut input = String::new();
     let mut tasks: Vec<(bool, String)> = vec![
         (true, "Initialize environment".to_string()),
@@ -51,6 +59,7 @@ pub async fn start_chat_session(client: &MerabClient) -> anyhow::Result<()> {
     let res = run_app(
         &mut terminal,
         client,
+        conv_id,
         &mut context,
         &mut messages,
         &mut input,
@@ -77,6 +86,7 @@ pub async fn start_chat_session(client: &MerabClient) -> anyhow::Result<()> {
 async fn run_app(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     client: &MerabClient,
+    conv_id: &str,
     context: &mut Vec<ChatMessage>,
     messages: &mut Vec<ChatMessage>,
     input: &mut String,
@@ -150,6 +160,7 @@ async fn run_app(
                     if handle_enter(
                         terminal,
                         client,
+                        conv_id,
                         context,
                         messages,
                         input,
@@ -199,6 +210,7 @@ async fn run_app(
 async fn handle_enter(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     client: &MerabClient,
+    conv_id: &str,
     context: &mut Vec<ChatMessage>,
     messages: &mut Vec<ChatMessage>,
     input: &mut String,
@@ -265,6 +277,11 @@ async fn handle_enter(
             *tokens_used += tokens as u64;
             if let Some(last_task) = tasks.last_mut() {
                 last_task.0 = true;
+            }
+            
+            if !conv_id.is_empty() {
+                let _ = client.conv_add_message(conv_id, "user", &user_msg).await;
+                let _ = client.conv_add_message(conv_id, "assistant", &response).await;
             }
         }
         Err(e) => {

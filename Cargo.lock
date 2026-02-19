@@ -1762,6 +1762,7 @@ dependencies = [
  "merab-ai",
  "merab-config",
  "merab-core",
+ "merab-store",
  "merab-transport",
  "merab-tui",
  "ratatui",

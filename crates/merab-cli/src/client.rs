@@ -1,6 +1,7 @@
 use anyhow::Result;
 use merab_ai::{AiResponse, ChatMessage};
 use merab_core::{AgentManifest, AgentRecord, AgentSummary, Message, Session};
+use merab_store::{ConvMessage, ConvSummary};
 use merab_transport::a2a::{AgentCard, TaskResponse};
 use serde::{Deserialize, Serialize};
 use jsonrpsee::core::client::ClientT;
@@ -285,6 +286,44 @@ impl MerabClient {
         let mut params = ObjectParams::new();
         params.insert("project_path", project_path)?;
         let result: merab_core::ProjectStats = self.client.request("merab.session.stats", params).await?;
+        Ok(result)
+    }
+
+    pub async fn conv_create(&self, project_path: &str) -> Result<ConvSummary> {
+        let mut params = ObjectParams::new();
+        params.insert("project_path", project_path)?;
+        let result: ConvSummary = self.client.request("merab.conv.create", params).await?;
+        Ok(result)
+    }
+
+    pub async fn conv_add_message(&self, conv_id: &str, role: &str, content: &str) -> Result<bool> {
+        let mut params = ObjectParams::new();
+        params.insert("conv_id", conv_id)?;
+        params.insert("role", role)?;
+        params.insert("content", content)?;
+        let result: bool = self.client.request("merab.conv.addMessage", params).await?;
+        Ok(result)
+    }
+
+    pub async fn conv_get_messages(&self, conv_id: &str) -> Result<Vec<ConvMessage>> {
+        let mut params = ObjectParams::new();
+        params.insert("conv_id", conv_id)?;
+        let result: Vec<ConvMessage> = self.client.request("merab.conv.getMessages", params).await?;
+        Ok(result)
+    }
+
+    pub async fn conv_list(&self, project_path: &str, limit: u32) -> Result<Vec<ConvSummary>> {
+        let mut params = ObjectParams::new();
+        params.insert("project_path", project_path)?;
+        params.insert("limit", limit)?;
+        let result: Vec<ConvSummary> = self.client.request("merab.conv.list", params).await?;
+        Ok(result)
+    }
+
+    pub async fn conv_get_last(&self, project_path: &str) -> Result<Option<ConvSummary>> {
+        let mut params = ObjectParams::new();
+        params.insert("project_path", project_path)?;
+        let result: Option<ConvSummary> = self.client.request("merab.conv.getLast", params).await?;
         Ok(result)
     }
 

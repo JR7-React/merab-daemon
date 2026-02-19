@@ -1,6 +1,7 @@
 mod agent_cmd;
 mod ask_cmd;
 mod bootstrap;
+mod chat_cmd;
 mod chat_render;
 mod chat_ui;
 mod client;
@@ -85,7 +86,21 @@ enum Commands {
     /// Monitor the system in real-time (TUI)
     Monitor,
     /// Chat with Merab AI
-    Chat,
+    #[command(about = "Interactive AI chat (saves history)")]
+    Chat {
+        /// Resume the last conversation for this project
+        #[arg(long)]
+        resume: bool,
+        /// Resume a specific conversation by ID prefix
+        #[arg(long)]
+        session: Option<String>,
+        /// Start a new conversation (ignore history)
+        #[arg(long)]
+        new: bool,
+        /// List saved conversations
+        #[arg(long)]
+        list: bool,
+    },
     #[command(about = "Ask AI to answer a question or execute a task")]
     Ask {
         #[arg(index = 1)]
@@ -194,7 +209,7 @@ async fn main() -> Result<()> {
 
     let command = match cli.command {
         Some(cmd) => cmd,
-        None => Commands::Chat,
+        None => Commands::Chat { resume: false, session: None, new: false, list: false },
     };
 
     match command {
@@ -290,9 +305,9 @@ async fn main() -> Result<()> {
             .await?;
         }
 
-        Commands::Chat => {
+        Commands::Chat { resume, session, new, list } => {
             let ready_client = bootstrap::ensure_ready(&cli.url).await?;
-            chat_ui::start_chat_session(&ready_client).await?;
+            chat_cmd::run_chat(&ready_client, resume, session, new, list).await?;
         }
 
         Commands::Ask { question, test, bg } => {

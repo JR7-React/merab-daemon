@@ -217,6 +217,14 @@ impl MerabClient {
         Ok(result)
     }
 
+    pub async fn ai_orchestrate_with_tests(&self, task: &str, event_file: &str) -> Result<AiResponse> {
+        let mut params = ObjectParams::new();
+        params.insert("task", task)?;
+        params.insert("event_file", event_file)?;
+        let result: AiResponse = self.client.request("merab.ai.orchestrate.withTests", params).await?;
+        Ok(result)
+    }
+
     pub async fn ai_execute_tool(
         &self,
         tool_name: &str,

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use chrono::Utc;
@@ -8,21 +8,21 @@ use merab_ai::{AiClient, AiClientConfig, AiResponse, ChatMessage};
 use merab_config::MerabConfig;
 use merab_core::multi_agent_pipeline::Task;
 use merab_core::session::{Session, SessionStatus};
-use merab_core::{estimate_cost, MerabError, TokenUsage};
+use merab_core::{estimate_cost, ArtifactLog, MerabError, TokenUsage};
 use merab_store::Database;
 use jsonrpsee::types::ErrorObjectOwned;
 use tokio::sync::Mutex;
 
 use super::server::to_rpc_error;
 use crate::artifacts::ArtifactTracker;
-use crate::dag::{execute_plan_dag, execute_tool_call, ExecutionResult};
+use crate::dag::{execute_plan_dag, ExecutionResult};
 use crate::events::EventSink;
 use crate::mcp_manager::McpManager;
 use crate::planner::PlannerAgent;
 use crate::prompts::ENGINEER_SYSTEM_PROMPT;
+use crate::test_runner::run_tests;
 
 
-/// Build an AiClient from the daemon's config.
 pub fn build_ai_client(config: &MerabConfig) -> Result<AiClient, ErrorObjectOwned> {
     let proxy_url = format!("http://{}:{}", config.daemon.host, config.proxy.port);
 
@@ -38,7 +38,6 @@ pub fn build_ai_client(config: &MerabConfig) -> Result<AiClient, ErrorObjectOwne
     Ok(AiClient::new(ai_config))
 }
 
-/// Build a dynamic system prompt that includes project context and available MCP tools.
 pub async fn build_dynamic_system_prompt(
     base_prompt: &str,
     mcp_manager: &Arc<McpManager>,
@@ -46,7 +45,6 @@ pub async fn build_dynamic_system_prompt(
 ) -> String {
     let mut prompt = base_prompt.to_string();
 
-    // Inject project context from shared memory
     {
         let store = db.lock().await;
         if let Ok(Some(serde_json::Value::String(ctx))) = store.get_memory("project.context") {
@@ -66,7 +64,6 @@ pub async fn build_dynamic_system_prompt(
     prompt.push_str(r#"{"tool_call": {"name": "<tool_name>", "arguments": {<args>}}}"#);
     prompt.push_str("\n\nTools:\n");
 
-    // Inject Internal Tools
     prompt.push_str("- **core.plan**: Decompose a complex task into a structured plan of subtasks. Use this as the FIRST step for any complex request.\n");
     prompt.push_str("  - `task`: The description of the task to decompose (required)\n");
 
@@ -93,7 +90,6 @@ pub async fn build_dynamic_system_prompt(
     prompt
 }
 
-/// Handle `merab.ai.chat` — single-step LLM call.
 pub async fn handle_ai_chat(
     config: &MerabConfig,
     mcp_manager: &Arc<McpManager>,
@@ -115,7 +111,6 @@ pub async fn handle_ai_chat(
         .map_err(|e| to_rpc_error(MerabError::AiError(e.to_string())))
 }
 
-/// Handle `merab.ai.executeTool` — execute a tool by name via McpManager.
 pub async fn handle_execute_tool(
     mcp_manager: &Arc<McpManager>,
     tool_name: String,
@@ -145,13 +140,13 @@ pub async fn handle_execute_tool(
         .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))
 }
 
-/// Handle `merab.ai.orchestrate` — Auto-Pipeline: Plan → Execute con fallback al loop simple.
 pub async fn handle_ai_orchestrate(
     config: &MerabConfig,
     mcp_manager: &Arc<McpManager>,
     db: &Arc<Mutex<Database>>,
     task: String,
     event_file: Option<PathBuf>,
+    enable_test_loop: bool,
 ) -> Result<AiResponse, ErrorObjectOwned> {
     let created_at = Utc::now();
 
@@ -162,55 +157,19 @@ pub async fn handle_ai_orchestrate(
         None => EventSink::new(),
     };
 
-    event_sink.emit_planning();
-    tracing::info!("[Planner] Descomponiendo tarea...");
-    let mut planner = PlannerAgent::new(config);
-
-    let plan = match planner.decompose(&task).await {
-        Ok(p) => p,
-        Err(e) => {
-            tracing::warn!(error = %e, "[Planner] Falló, usando loop simple como fallback");
-            event_sink.emit_error("Planner failed, using fallback");
-            return handle_ai_chat_loop(config, mcp_manager, db, task).await;
-        }
-    };
-
-    if plan.subtasks.is_empty() {
-        tracing::warn!("[Planner] Plan sin subtasks, usando loop simple como fallback");
-        event_sink.emit_error("Empty plan, using fallback");
-        return handle_ai_chat_loop(config, mcp_manager, db, task).await;
-    }
-
-    event_sink.emit_plan_ready(plan.subtasks.len());
-    tracing::info!(
-        subtasks = plan.subtasks.len(),
-        description = %plan.description,
-        "[Pipeline] Plan generado, ejecutando subtasks"
-    );
-
-    let plan_json = serde_json::to_string(&plan)
-        .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
-
-    let tracker = ArtifactTracker::new();
-    let result = handle_ai_execute_plan_internal(config, mcp_manager, db, plan_json, Some(&tracker), Some(event_sink.clone())).await?;
-    let artifacts = tracker.finish();
-
-    event_sink.emit_done();
-    tracing::info!("[Pipeline] Completado");
-
-    let content = format_execution_result(&result);
-
-    // Extraer tokens del resultado
-    let (tokens_input, tokens_output, cost_usd) = extract_token_stats(&result, &config.ai.model);
-
-    // Guardar sesión en SQLite
     let project_path = {
         let store = db.lock().await;
         match store.get_memory("project.root_path") {
-            Ok(Some(serde_json::Value::String(p))) => p,
-            _ => String::from("unknown"),
+            Ok(Some(serde_json::Value::String(p))) => PathBuf::from(p),
+            _ => PathBuf::from("."),
         }
     };
+
+    let (content, artifacts, tokens_input, tokens_output) = 
+        run_pipeline_with_fix_loop(config, mcp_manager, &task, &project_path, &event_sink, enable_test_loop).await?;
+
+    let project_path_str = project_path.to_string_lossy().to_string();
+    let cost_usd = estimate_cost(&config.ai.model, tokens_input, tokens_output).unwrap_or(0.0);
 
     let summary = if content.len() > 500 {
         format!("{}...", &content[..500])
@@ -220,7 +179,7 @@ pub async fn handle_ai_orchestrate(
 
     let session = Session {
         id: Uuid::new_v4().to_string(),
-        project_path,
+        project_path: project_path_str,
         task: task.clone(),
         summary,
         artifacts: artifacts.clone(),
@@ -248,86 +207,128 @@ pub async fn handle_ai_orchestrate(
     })
 }
 
-/// Fallback: loop single-LLM con tools. Usado por `merab.ai.chat` y como fallback de orchestrate.
-async fn handle_ai_chat_loop(
+async fn run_pipeline_with_fix_loop(
     config: &MerabConfig,
     mcp_manager: &Arc<McpManager>,
-    db: &Arc<Mutex<Database>>,
-    task: String,
-) -> Result<AiResponse, ErrorObjectOwned> {
-    let mut client = build_ai_client(config)?;
-    let max_steps = config.ai.max_orchestration_steps;
+    task: &str,
+    project_path: &Path,
+    event_sink: &EventSink,
+    enable_test_loop: bool,
+) -> Result<(String, ArtifactLog, u64, u64), ErrorObjectOwned> {
+    let max_fix_cycles = config.ai.max_fix_cycles;
+    
+    let mut current_task = task.to_string();
+    let mut all_artifacts = Vec::new();
+    let mut total_tokens_input: u64 = 0;
+    let mut total_tokens_output: u64 = 0;
+    let mut final_content = String::new();
+    
+    for cycle in 0..max_fix_cycles {
+        event_sink.emit_planning();
+        tracing::info!("[Planner] Descomponiendo tarea...");
+        let mut planner = PlannerAgent::new(config);
 
-    let dynamic_prompt = build_dynamic_system_prompt(ENGINEER_SYSTEM_PROMPT, mcp_manager, db).await;
-    client.set_system_prompt(dynamic_prompt);
+        let plan = match planner.decompose(&current_task).await {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!(error = %e, "[Planner] Falló");
+                return Err(to_rpc_error(MerabError::Internal(format!("Planner failed: {}", e))));
+            }
+        };
 
-    let mut messages: Vec<ChatMessage> = vec![ChatMessage::user(&task)];
-
-    for step in 0..max_steps {
-        tracing::info!(step = step, max = max_steps, "chat loop step");
-
-        let response = client
-            .chat(messages.clone())
-            .await
-            .map_err(|e| to_rpc_error(MerabError::AiError(e.to_string())))?;
-
-        if response.tool_call.is_none() {
-            tracing::info!(steps = step + 1, "chat loop complete");
-            return Ok(response);
+        if plan.subtasks.is_empty() {
+            return Err(to_rpc_error(MerabError::Internal("Empty plan".to_string())));
         }
 
-        let tool_call = response.tool_call.clone().unwrap();
-        tracing::info!(
-            step = step,
-            tool = %tool_call.name,
-            "chat loop: executing tool"
-        );
+        event_sink.emit_plan_ready(plan.subtasks.len());
+        
+        let _plan_json = serde_json::to_string(&plan)
+            .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
 
-        messages.push(ChatMessage::assistant(&response.content));
+        let tracker = ArtifactTracker::new();
+        let config_arc = Arc::new(config.clone());
+        
+        // Create a dummy in-memory DB for the plan execution (not used for storage)
+        let dummy_db = Arc::new(Mutex::new(
+            Database::open_in_memory().map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?
+        ));
+        
+        let results = execute_plan_dag(&config_arc, mcp_manager, &dummy_db, &plan, Some(tracker.clone()), None).await?;
+        let artifacts = tracker.finish();
+        all_artifacts.push(artifacts);
 
-        let tool_result_str = execute_tool_call(config, mcp_manager, &tool_call, None).await?;
+        for r in &results {
+            total_tokens_input += r.tokens_input;
+            total_tokens_output += r.tokens_output;
+        }
 
-        messages.push(ChatMessage::user(format!(
-            "Tool '{}' returned:\n{}",
-            tool_call.name, tool_result_str
-        )));
+        final_content = format_pipeline_results(&plan, &results);
+        
+        if !enable_test_loop {
+            let merged_artifacts = merge_artifacts(&all_artifacts);
+            return Ok((final_content, merged_artifacts, total_tokens_input, total_tokens_output));
+        }
+
+        event_sink.emit_step("test_runner", "Running tests...");
+        
+        let test_result = run_tests(project_path).await;
+        
+        if test_result.success {
+            event_sink.emit_step("test_runner", &format!("All tests passed ({} passed)", test_result.passed));
+            let merged_artifacts = merge_artifacts(&all_artifacts);
+            return Ok((final_content, merged_artifacts, total_tokens_input, total_tokens_output));
+        }
+
+        event_sink.emit_step("test_runner", &format!("Tests failed: {} failed", test_result.failed));
+
+        if cycle < max_fix_cycles - 1 {
+            current_task = format!(
+                "The previous implementation has failing tests. Fix the code to make these tests pass:\n\nTest Output:\n{}\n\nOriginal task: {}",
+                test_result.output, task
+            );
+            
+            event_sink.emit_step("fix_loop", &format!("Fix cycle {}/{}", cycle + 1, max_fix_cycles));
+        }
     }
 
-    tracing::warn!(max_steps = max_steps, "chat loop hit step limit");
-
-    messages.push(ChatMessage::user(
-        "You have reached the maximum number of steps. \
-         Please provide a final summary of what was accomplished and what remains.",
-    ));
-
-    let final_response = client
-        .chat(messages)
-        .await
-        .map_err(|e| to_rpc_error(MerabError::AiError(e.to_string())))?;
-
-    Ok(final_response)
+    final_content = format!(
+        "{} \n\n⚠️ Tests still failing after {} fix cycles. Manual intervention required.",
+        final_content, max_fix_cycles
+    );
+    let merged_artifacts = merge_artifacts(&all_artifacts);
+    Ok((final_content, merged_artifacts, total_tokens_input, total_tokens_output))
 }
 
-/// Formatea el resultado de ejecución del pipeline en texto legible.
-fn format_execution_result(result: &serde_json::Value) -> String {
+fn merge_artifacts(artifacts_list: &[ArtifactLog]) -> ArtifactLog {
+    let mut files_created = Vec::new();
+    let mut files_modified = Vec::new();
+    let mut commands = Vec::new();
+    
+    for artifacts in artifacts_list {
+        files_created.extend(artifacts.files_created.clone());
+        files_modified.extend(artifacts.files_modified.clone());
+        commands.extend(artifacts.commands.clone());
+    }
+    
+    ArtifactLog {
+        files_created,
+        files_modified,
+        commands,
+    }
+}
+
+fn format_pipeline_results(plan: &Task, results: &[crate::dag::SubtaskResult]) -> String {
     let mut output = String::new();
 
-    if let Some(desc) = result.get("plan_description").and_then(|v| v.as_str()) {
-        output.push_str(&format!("## Plan: {}\n\n", desc));
-    }
+    output.push_str(&format!("## Plan: {}\n\n", plan.description));
+    output.push_str(&format!("Subtasks completadas: {}\n\n", results.len()));
 
-    if let Some(count) = result.get("subtasks_executed").and_then(|v| v.as_u64()) {
-        output.push_str(&format!("Subtasks completadas: {}\n\n", count));
-    }
-
-    if let Some(results) = result.get("results").and_then(|v| v.as_array()) {
-        for subtask in results {
-            let persona = subtask.get("persona").and_then(|v| v.as_str()).unwrap_or("unknown");
-            let desc = subtask.get("description").and_then(|v| v.as_str()).unwrap_or("");
-            let out = subtask.get("output").and_then(|v| v.as_str()).unwrap_or("");
-
-            output.push_str(&format!("### [{}] {}\n{}\n\n", persona.to_uppercase(), desc, out));
-        }
+    for (i, subtask) in plan.subtasks.iter().enumerate() {
+        let result = results.get(i);
+        let out = result.map(|r| r.output.as_str()).unwrap_or("");
+        
+        output.push_str(&format!("### [{}] {}\n{}\n\n", 
+            subtask.persona, subtask.description, out));
     }
 
     if output.is_empty() {
@@ -337,13 +338,12 @@ fn format_execution_result(result: &serde_json::Value) -> String {
     output
 }
 
-/// Handle `merab.ai.plan` — decompose a task into a plan.
 pub async fn handle_ai_plan(
-    _config: &MerabConfig,
+    config: &MerabConfig,
     _mcp_manager: &Arc<McpManager>,
     task: String,
 ) -> Result<serde_json::Value, ErrorObjectOwned> {
-    let mut planner = PlannerAgent::new(_config);
+    let mut planner = PlannerAgent::new(config);
     let plan = planner.decompose(&task).await
         .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
     
@@ -351,7 +351,6 @@ pub async fn handle_ai_plan(
         .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))
 }
 
-/// Handle `merab.ai.executePlan` — execute a plan via DAG scheduler (paralelo donde sea posible).
 pub async fn handle_ai_execute_plan(
     config: &MerabConfig,
     mcp_manager: &Arc<McpManager>,
@@ -359,22 +358,11 @@ pub async fn handle_ai_execute_plan(
     plan_json: String,
     tracker: Option<&ArtifactTracker>,
 ) -> Result<serde_json::Value, ErrorObjectOwned> {
-    handle_ai_execute_plan_internal(config, mcp_manager, db, plan_json, tracker, None).await
-}
-
-async fn handle_ai_execute_plan_internal(
-    config: &MerabConfig,
-    mcp_manager: &Arc<McpManager>,
-    db: &Arc<Mutex<Database>>,
-    plan_json: String,
-    tracker: Option<&ArtifactTracker>,
-    event_sink: Option<EventSink>,
-) -> Result<serde_json::Value, ErrorObjectOwned> {
     let plan: Task = serde_json::from_str(&plan_json)
         .map_err(|e| to_rpc_error(MerabError::InvalidInput(format!("Invalid plan JSON: {}", e))))?;
 
     let config_arc = Arc::new(config.clone());
-    let results = execute_plan_dag(&config_arc, mcp_manager, db, &plan, tracker.cloned(), event_sink).await?;
+    let results = execute_plan_dag(&config_arc, mcp_manager, db, &plan, tracker.cloned(), None).await?;
 
     let mut total_input: u64 = 0;
     let mut total_output: u64 = 0;
@@ -394,11 +382,4 @@ async fn handle_ai_execute_plan_internal(
 
     serde_json::to_value(&execution_result)
         .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))
-}
-
-fn extract_token_stats(result: &serde_json::Value, model: &str) -> (u64, u64, f64) {
-    let tokens_input = result.get("tokens_input").and_then(|v| v.as_u64()).unwrap_or(0);
-    let tokens_output = result.get("tokens_output").and_then(|v| v.as_u64()).unwrap_or(0);
-    let cost_usd = estimate_cost(model, tokens_input, tokens_output).unwrap_or(0.0);
-    (tokens_input, tokens_output, cost_usd)
 }

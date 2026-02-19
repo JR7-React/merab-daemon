@@ -10,4 +10,5 @@ pub mod rpc;
 pub mod planner;
 pub mod prompts;
 pub mod supervisor;
+pub mod test_runner;
 

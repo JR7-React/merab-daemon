@@ -51,10 +51,18 @@ pub struct AiConfig {
     pub max_parallel_tasks: u32,
     #[serde(default)]
     pub personas: HashMap<String, PersonaModelConfig>,
+    #[serde(default = "default_max_fix_cycles")]
+    pub max_fix_cycles: u32,
+    #[serde(default)]
+    pub auto_run_tests: bool,
 }
 
 fn default_max_parallel_tasks() -> u32 {
     4
+}
+
+fn default_max_fix_cycles() -> u32 {
+    3
 }
 
 impl AiConfig {
@@ -130,6 +138,8 @@ impl Default for MerabConfig {
                 max_orchestration_steps: 10,
                 max_parallel_tasks: 4,
                 personas,
+                max_fix_cycles: 3,
+                auto_run_tests: false,
             },
         }
     }
@@ -162,7 +172,12 @@ impl MerabConfig {
                 "ai.max_orchestration_steps",
                 defaults.ai.max_orchestration_steps as i64,
             )?
-            .set_default("ai.max_parallel_tasks", defaults.ai.max_parallel_tasks as i64)?;
+            .set_default(
+                "ai.max_parallel_tasks",
+                defaults.ai.max_parallel_tasks as i64,
+            )?
+            .set_default("ai.max_fix_cycles", defaults.ai.max_fix_cycles as i64)?
+            .set_default("ai.auto_run_tests", defaults.ai.auto_run_tests)?;
 
         // 2. Load from config file (if exists)
         if let Some(config_dir) = dirs::config_dir() {

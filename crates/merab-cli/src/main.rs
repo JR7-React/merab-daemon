@@ -127,6 +127,10 @@ enum Commands {
     Ask {
         #[arg(index = 1)]
         question: String,
+
+        /// Run tests automatically and fix failures
+        #[arg(long, short)]
+        test: bool,
     },
 
     #[command(about = "Ask AI to create a plan for a task")]
@@ -413,7 +417,7 @@ async fn main() -> Result<()> {
             chat_ui::start_chat_session(&ready_client).await?;
         }
 
-        Commands::Ask { question } => {
+        Commands::Ask { question, test } => {
             let ready_client = bootstrap::ensure_ready(&cli.url).await?;
             
             let event_file = std::env::temp_dir().join(format!("merab-events-{}.jsonl", std::process::id()));
@@ -422,7 +426,11 @@ async fn main() -> Result<()> {
             let running = Arc::new(AtomicBool::new(true));
             let tail_handle = event_tail::start_event_tail(&event_file, running.clone());
             
-            let result = ready_client.ai_orchestrate_stream(&question, &event_file_str).await;
+            let result = if test {
+                ready_client.ai_orchestrate_with_tests(&question, &event_file_str).await
+            } else {
+                ready_client.ai_orchestrate_stream(&question, &event_file_str).await
+            };
             
             running.store(false, Ordering::Relaxed);
             let _ = tail_handle.join();
@@ -431,6 +439,14 @@ async fn main() -> Result<()> {
             
             match result {
                 Ok(resp) => {
+                    if let Some(usage) = &resp.usage {
+                        println!("\nTokens: {} input / {} output", 
+                            format_number(usage.input), 
+                            format_number(usage.output));
+                        if let Some(cost) = merab_core::estimate_cost(&usage.model, usage.input, usage.output) {
+                            println!("Costo estimado: ${:.4}", cost);
+                        }
+                    }
                     if let Some(artifacts) = &resp.artifacts {
                         print_artifact_summary(artifacts);
                     }

@@ -135,6 +135,13 @@ pub trait MerabApi {
         event_file: String,
     ) -> Result<AiResponse, ErrorObjectOwned>;
 
+    #[method(name = "merab.ai.orchestrate.withTests")]
+    async fn ai_orchestrate_with_tests(
+        &self,
+        task: String,
+        event_file: String,
+    ) -> Result<AiResponse, ErrorObjectOwned>;
+
     #[method(name = "merab.ai.executeTool")]
     async fn ai_execute_tool(
         &self,
@@ -604,7 +611,7 @@ impl MerabApiServer for MerabRpc {
     }
 
     async fn ai_orchestrate(&self, task: String) -> Result<AiResponse, ErrorObjectOwned> {
-        ai_methods::handle_ai_orchestrate(&self.config, &self.mcp_manager, &self.db, task, None).await
+        ai_methods::handle_ai_orchestrate(&self.config, &self.mcp_manager, &self.db, task, None, false).await
     }
 
     async fn ai_orchestrate_stream(
@@ -613,7 +620,16 @@ impl MerabApiServer for MerabRpc {
         event_file: String,
     ) -> Result<AiResponse, ErrorObjectOwned> {
         let path = std::path::PathBuf::from(event_file);
-        ai_methods::handle_ai_orchestrate(&self.config, &self.mcp_manager, &self.db, task, Some(path)).await
+        ai_methods::handle_ai_orchestrate(&self.config, &self.mcp_manager, &self.db, task, Some(path), false).await
+    }
+
+    async fn ai_orchestrate_with_tests(
+        &self,
+        task: String,
+        event_file: String,
+    ) -> Result<AiResponse, ErrorObjectOwned> {
+        let path = std::path::PathBuf::from(event_file);
+        ai_methods::handle_ai_orchestrate(&self.config, &self.mcp_manager, &self.db, task, Some(path), true).await
     }
 
     async fn ai_execute_tool(

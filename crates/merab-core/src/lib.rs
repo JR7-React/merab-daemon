@@ -8,6 +8,7 @@ pub mod pricing;
 pub mod session;
 pub mod stats;
 pub mod task;
+pub mod test_result;
 
 pub use agent::*;
 pub use artifact::{ArtifactLog, CommandResult};
@@ -19,6 +20,7 @@ pub use pricing::{estimate_cost, TokenUsage};
 pub use session::{Session, SessionStatus};
 pub use stats::*;
 pub use task::*;
+pub use test_result::{TestRunResult, TestRunner};
 
 pub mod multi_agent_pipeline;
 

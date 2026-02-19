@@ -168,3 +168,54 @@ fn parse_dt(s: String) -> DateTime<Utc> {
         .map(|d| d.with_timezone(&Utc))
         .unwrap_or_else(|_| Utc::now())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Database;
+
+    fn test_db() -> Database {
+        Database::open_in_memory().expect("test db")
+    }
+
+    #[test]
+    fn test_job_lifecycle() {
+        let db = test_db();
+        let id = "test-job-1";
+
+        // Crear
+        db.create_job(id, "cargo test --workspace", "/tmp/test.log")
+            .unwrap();
+        let job = db.get_job(id).unwrap().unwrap();
+        assert_eq!(job.status, JobStatus::Pending);
+
+        // Iniciar
+        db.start_job(id).unwrap();
+        let job = db.get_job(id).unwrap().unwrap();
+        assert_eq!(job.status, JobStatus::Running);
+
+        // Completar
+        db.complete_job(id, "ok").unwrap();
+        let job = db.get_job(id).unwrap().unwrap();
+        assert_eq!(job.status, JobStatus::Done);
+    }
+
+    #[test]
+    fn test_job_cancel() {
+        let db = test_db();
+        db.create_job("job-cancel", "tarea", "/tmp/cancel.log")
+            .unwrap();
+        db.cancel_job("job-cancel").unwrap();
+        let job = db.get_job("job-cancel").unwrap().unwrap();
+        assert_eq!(job.status, JobStatus::Failed);
+    }
+
+    #[test]
+    fn test_list_jobs_returns_recent_first() {
+        let db = test_db();
+        db.create_job("job-a", "tarea a", "/tmp/a.log").unwrap();
+        db.create_job("job-b", "tarea b", "/tmp/b.log").unwrap();
+        let jobs = db.list_jobs(10, true).unwrap();
+        assert!(jobs.len() >= 2);
+    }
+}

@@ -22,7 +22,7 @@ pub fn start_event_tail(event_file: &Path, running: Arc<AtomicBool>) -> thread::
                             let reader = BufReader::new(file);
 
                             for line in reader.lines().flatten() {
-                                if let Ok(event) = serde_json::from_str::<ProgressEvent>(&line) {
+                                if let Some(event) = parse_event_line(&line) {
                                     display_event(&event);
                                     if event.kind == EventKind::Done {
                                         running.store(false, Ordering::Relaxed);
@@ -76,8 +76,56 @@ fn display_event(event: &ProgressEvent) {
             eprintln!("! Error: {}", event.message);
         }
         EventKind::Retrying => {
-            let tag = event.persona.as_ref().map(|p| p.to_uppercase()).unwrap_or_default();
+            let tag = event
+                .persona
+                .as_ref()
+                .map(|p| p.to_uppercase())
+                .unwrap_or_default();
             println!("  [{}] ⟳ {}", tag, event.message);
         }
+    }
+}
+
+pub(crate) fn parse_event_line(line: &str) -> Option<ProgressEvent> {
+    if line.is_empty() {
+        return None;
+    }
+    serde_json::from_str::<ProgressEvent>(line).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_thinking_event() {
+        let line = r#"{"kind":"step","persona":"Coder","message":"Analizando..."}"#;
+        let result = parse_event_line(line);
+        assert!(result.is_some());
+        let ev = result.unwrap();
+        assert_eq!(ev.persona.as_deref(), Some("Coder"));
+        assert_eq!(ev.kind, EventKind::Step);
+    }
+
+    #[test]
+    fn test_parse_done_event() {
+        let line = r#"{"kind":"done","message":"Pipeline completed"}"#;
+        let result = parse_event_line(line);
+        assert!(result.is_some());
+        let ev = result.unwrap();
+        assert_eq!(ev.kind, EventKind::Done);
+        assert_eq!(ev.message, "Pipeline completed");
+    }
+
+    #[test]
+    fn test_invalid_json_returns_none() {
+        let result = parse_event_line("not json at all");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_empty_line_returns_none() {
+        let result = parse_event_line("");
+        assert!(result.is_none());
     }
 }

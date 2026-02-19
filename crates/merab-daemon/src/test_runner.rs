@@ -42,3 +42,49 @@ pub async fn run_tests(project_path: &Path) -> TestRunResult {
 pub fn detect_test_runner(project_path: &std::path::Path) -> TestRunner {
     TestRunner::detect(project_path)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_detect_cargo_project() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("Cargo.toml"), "[package]").unwrap();
+        let runner = TestRunner::detect(tmp.path());
+        assert!(matches!(runner, TestRunner::Cargo));
+    }
+
+    #[test]
+    fn test_detect_npm_project() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("package.json"), "{}").unwrap();
+        let runner = TestRunner::detect(tmp.path());
+        assert!(matches!(runner, TestRunner::Npm));
+    }
+
+    #[test]
+    fn test_detect_unknown_project() {
+        let tmp = tempfile::tempdir().unwrap();
+        let runner = TestRunner::detect(tmp.path());
+        assert!(matches!(runner, TestRunner::Unknown));
+    }
+
+    #[test]
+    fn test_parse_cargo_test_output_all_pass() {
+        let output = "test result: ok. 5 passed; 0 failed; 0 ignored";
+        let result = TestRunResult::new(output.to_string());
+        assert!(result.success);
+        assert_eq!(result.passed, 5);
+        assert_eq!(result.failed, 0);
+    }
+
+    #[test]
+    fn test_parse_cargo_test_output_with_failures() {
+        let output = "test result: FAILED. 3 passed; 2 failed; 0 ignored";
+        let result = TestRunResult::new(output.to_string());
+        assert!(!result.success);
+        assert_eq!(result.passed, 3);
+        assert_eq!(result.failed, 2);
+    }
+}

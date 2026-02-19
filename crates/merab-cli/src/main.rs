@@ -14,6 +14,7 @@ mod index_cmd;
 mod jobs_cmd;
 mod project_context;
 mod review;
+mod self_upgrade;
 mod sessions_cmd;
 mod slash_commands;
 mod watch;
@@ -73,6 +74,18 @@ enum Commands {
     Config(config_cmd::ConfigCommands),
     #[command(subcommand)]
     Index(IndexCommands),
+    /// Upgrade Merab itself using AI
+    SelfUpgrade {
+        /// What to add or change
+        #[arg(index = 1)]
+        task: String,
+        /// Auto-commit if build and tests pass
+        #[arg(long)]
+        yes: bool,
+        /// Show proposed changes without applying
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -134,4 +147,36 @@ pub(crate) fn print_artifact_summary(artifacts: &merab_core::artifact::ArtifactL
             println!("  $ {}", c.command);
         }
     }
+}
+
+pub fn detect_merab_root() -> anyhow::Result<std::path::PathBuf> {
+    // 1. Variable de entorno explícita
+    if let Ok(p) = std::env::var("MERAB_SOURCE_PATH") {
+        let path = std::path::PathBuf::from(p);
+        if path.exists() {
+            return Ok(path);
+        }
+    }
+
+    // 2. Buscar hacia arriba desde cwd
+    let mut current = std::env::current_dir()?;
+    loop {
+        let cargo_toml = current.join("Cargo.toml");
+        if cargo_toml.exists() {
+            if let Ok(content) = std::fs::read_to_string(&cargo_toml) {
+                // Check if this is the workspace root with merab-cli
+                if content.contains("[workspace]") && content.contains("merab-cli") {
+                    return Ok(current);
+                }
+            }
+        }
+        if !current.pop() {
+            break;
+        }
+    }
+
+    Err(anyhow::anyhow!(
+        "No se encontró el directorio raíz de Merab.\n\
+         Configura MERAB_SOURCE_PATH=/ruta/a/merab"
+    ))
 }

@@ -200,6 +200,12 @@ pub async fn dispatch(command: Commands, client: MerabClient, url: &str) -> Resu
                 }
             }
         }
+
+        Commands::SelfUpgrade { task, yes, dry_run } => {
+            let merab_root = crate::detect_merab_root()?;
+            let cfg = crate::self_upgrade::SelfUpgradeConfig { task, yes, dry_run, merab_root };
+            crate::self_upgrade::run_self_upgrade(&client, cfg).await?;
+        }
     }
 
     Ok(())

@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use crate::CacheEntry;
     use crate::db::Database;
+    use crate::CacheEntry;
     use merab_core::*;
     use serde_json::json;
     use uuid::Uuid;

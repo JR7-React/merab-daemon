@@ -156,6 +156,9 @@ enum Commands {
         /// Session ID to resume (default: last session)
         id: Option<String>,
     },
+
+    #[command(about = "Show token usage and cost stats for the project")]
+    Stats,
 }
 
 #[derive(Subcommand)]
@@ -472,18 +475,20 @@ async fn main() -> Result<()> {
                     println!("No hay sesiones previas para este proyecto.");
                 }
                 Ok(sessions) => {
-                    println!("{:<8} {:<17} {:<12} {}", "ID", "FECHA", "ESTADO", "TAREA");
-                    println!("{}", "─".repeat(80));
+                    println!("{:<8} {:<17} {:<12} {:<12} {:<8} {}", "ID", "FECHA", "ESTADO", "TOKENS", "COSTO", "TAREA");
+                    println!("{}", "─".repeat(90));
                     for s in sessions {
                         let short_id = &s.id[..8.min(s.id.len())];
                         let date = s.display_date();
                         let status = s.status.to_string();
-                        let task_preview = if s.task.len() > 45 {
-                            format!("{}...", &s.task[..45])
+                        let tokens = format_number(s.total_tokens());
+                        let cost = s.display_cost();
+                        let task_preview = if s.task.len() > 35 {
+                            format!("{}...", &s.task[..35])
                         } else {
                             s.task.clone()
                         };
-                        println!("{:<8} {:<17} {:<12} {}", short_id, date, status, task_preview);
+                        println!("{:<8} {:<17} {:<12} {:<12} {:<8} {}", short_id, date, status, tokens, cost, task_preview);
                     }
                 }
                 Err(e) => eprintln!("Error: {}", e),
@@ -572,9 +577,42 @@ async fn main() -> Result<()> {
             
             match result {
                 Ok(resp) => {
+                    if let Some(ref usage) = resp.usage {
+                        println!("\nTokens: {} input / {} output", 
+                            format_number(usage.input), 
+                            format_number(usage.output));
+                        if let Some(cost) = merab_core::estimate_cost(&usage.model, usage.input, usage.output) {
+                            println!("Costo estimado: ${:.4}", cost);
+                        }
+                    }
                     if let Some(artifacts) = &resp.artifacts {
                         print_artifact_summary(artifacts);
                     }
+                }
+                Err(e) => eprintln!("Error: {}", e),
+            }
+        }
+
+        Commands::Stats => {
+            let ready_client = bootstrap::ensure_ready(&cli.url).await?;
+            let project_path = std::env::current_dir()?
+                .to_string_lossy()
+                .to_string();
+
+            match ready_client.get_project_stats(&project_path).await {
+                Ok(stats) => {
+                    let cwd = std::env::current_dir()?;
+                    let project_name = cwd.file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
+
+                    println!("Proyecto: {}", project_name);
+                    println!("{}", "─".repeat(40));
+                    println!("Total sesiones: {}", stats.total_sessions);
+                    println!("Total tokens: {}", format_number(stats.total_tokens()));
+                    println!("  - Input:  {}", format_number(stats.total_tokens_input));
+                    println!("  - Output: {}", format_number(stats.total_tokens_output));
+                    println!("Costo estimado: ${:.4}", stats.total_cost_usd);
                 }
                 Err(e) => eprintln!("Error: {}", e),
             }
@@ -622,4 +660,17 @@ fn print_artifact_summary(artifacts: &merab_core::artifact::ArtifactLog) {
     }
 
     println!("{}", "─".repeat(45));
+}
+
+fn format_number(n: u64) -> String {
+    let s = n.to_string();
+    let mut result = String::new();
+    let chars: Vec<char> = s.chars().collect();
+    for (i, c) in chars.iter().enumerate() {
+        if i > 0 && (chars.len() - i) % 3 == 0 {
+            result.push(',');
+        }
+        result.push(*c);
+    }
+    result
 }

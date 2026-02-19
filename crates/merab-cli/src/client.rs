@@ -261,4 +261,11 @@ impl MerabClient {
         let result: Vec<Session> = self.client.request("merab.session.list", params).await?;
         Ok(result)
     }
+
+    pub async fn get_project_stats(&self, project_path: &str) -> Result<merab_core::ProjectStats> {
+        let mut params = ObjectParams::new();
+        params.insert("project_path", project_path)?;
+        let result: merab_core::ProjectStats = self.client.request("merab.session.stats", params).await?;
+        Ok(result)
+    }
 }

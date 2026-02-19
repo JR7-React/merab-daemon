@@ -13,12 +13,29 @@ pub struct Session {
     pub status: SessionStatus,
     pub created_at: DateTime<Utc>,
     pub completed_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub tokens_input: u64,
+    #[serde(default)]
+    pub tokens_output: u64,
+    #[serde(default)]
+    pub cost_usd: f64,
 }
 
 impl Session {
-    /// Fecha formateada para mostrar al usuario.
     pub fn display_date(&self) -> String {
         self.created_at.format("%Y-%m-%d %H:%M").to_string()
+    }
+
+    pub fn total_tokens(&self) -> u64 {
+        self.tokens_input + self.tokens_output
+    }
+
+    pub fn display_cost(&self) -> String {
+        if self.cost_usd > 0.0 {
+            format!("${:.2}", self.cost_usd)
+        } else {
+            "N/A".to_string()
+        }
     }
 }
 

@@ -24,6 +24,16 @@ pub struct SubtaskResult {
     pub persona: String,
     pub model: String,
     pub output: String,
+    #[serde(default)]
+    pub tokens_input: u64,
+    #[serde(default)]
+    pub tokens_output: u64,
+}
+
+impl SubtaskResult {
+    pub fn total_tokens(&self) -> u64 {
+        self.tokens_input + self.tokens_output
+    }
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -32,6 +42,16 @@ pub struct ExecutionResult {
     pub plan_description: String,
     pub subtasks_executed: usize,
     pub results: Vec<SubtaskResult>,
+    #[serde(default)]
+    pub tokens_input: u64,
+    #[serde(default)]
+    pub tokens_output: u64,
+}
+
+impl ExecutionResult {
+    pub fn total_tokens(&self) -> u64 {
+        self.tokens_input + self.tokens_output
+    }
 }
 
 /// Ejecuta el plan como un DAG: subtasks independientes corren en paralelo,
@@ -169,11 +189,19 @@ async fn execute_subtask(
     messages.push(ChatMessage::user(subtask.description.clone()));
 
     let mut output = String::new();
+    let mut total_input: u64 = 0;
+    let mut total_output: u64 = 0;
+
     for _step in 0..max_steps {
         let response = client
             .chat(messages.clone())
             .await
             .map_err(|e| to_rpc_error(MerabError::AiError(e.to_string())))?;
+
+        if let Some(ref usage) = response.usage {
+            total_input += usage.input;
+            total_output += usage.output;
+        }
 
         if response.tool_call.is_none() {
             output = response.content.clone();
@@ -204,6 +232,8 @@ async fn execute_subtask(
         persona: subtask.persona.to_string(),
         model: persona_model,
         output,
+        tokens_input: total_input,
+        tokens_output: total_output,
     })
 }
 

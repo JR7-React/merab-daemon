@@ -8,7 +8,7 @@ use merab_ai::{AiClient, AiClientConfig, AiResponse, ChatMessage};
 use merab_config::MerabConfig;
 use merab_core::multi_agent_pipeline::Task;
 use merab_core::session::{Session, SessionStatus};
-use merab_core::MerabError;
+use merab_core::{estimate_cost, MerabError, TokenUsage};
 use merab_store::Database;
 use jsonrpsee::types::ErrorObjectOwned;
 use tokio::sync::Mutex;
@@ -200,6 +200,9 @@ pub async fn handle_ai_orchestrate(
 
     let content = format_execution_result(&result);
 
+    // Extraer tokens del resultado
+    let (tokens_input, tokens_output, cost_usd) = extract_token_stats(&result, &config.ai.model);
+
     // Guardar sesión en SQLite
     let project_path = {
         let store = db.lock().await;
@@ -224,6 +227,9 @@ pub async fn handle_ai_orchestrate(
         status: SessionStatus::Completed,
         created_at,
         completed_at: Some(Utc::now()),
+        tokens_input,
+        tokens_output,
+        cost_usd,
     };
 
     {
@@ -238,6 +244,7 @@ pub async fn handle_ai_orchestrate(
         model: Some(config.ai.model.clone()),
         tool_call: None,
         artifacts: Some(artifacts),
+        usage: Some(TokenUsage::new(tokens_input, tokens_output, config.ai.model.clone())),
     })
 }
 
@@ -369,13 +376,29 @@ async fn handle_ai_execute_plan_internal(
     let config_arc = Arc::new(config.clone());
     let results = execute_plan_dag(&config_arc, mcp_manager, db, &plan, tracker.cloned(), event_sink).await?;
 
+    let mut total_input: u64 = 0;
+    let mut total_output: u64 = 0;
+    for r in &results {
+        total_input += r.tokens_input;
+        total_output += r.tokens_output;
+    }
+
     let execution_result = ExecutionResult {
         plan_id: plan.id,
         plan_description: plan.description,
         subtasks_executed: results.len(),
         results,
+        tokens_input: total_input,
+        tokens_output: total_output,
     };
 
     serde_json::to_value(&execution_result)
         .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))
+}
+
+fn extract_token_stats(result: &serde_json::Value, model: &str) -> (u64, u64, f64) {
+    let tokens_input = result.get("tokens_input").and_then(|v| v.as_u64()).unwrap_or(0);
+    let tokens_output = result.get("tokens_output").and_then(|v| v.as_u64()).unwrap_or(0);
+    let cost_usd = estimate_cost(model, tokens_input, tokens_output).unwrap_or(0.0);
+    (tokens_input, tokens_output, cost_usd)
 }

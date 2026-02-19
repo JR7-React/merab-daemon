@@ -5,7 +5,7 @@ use merab_ai::{AiResponse, ChatMessage};
 use merab_config::MerabConfig;
 use merab_core::{
     AgentManifest, AgentRecord, AgentStats, AgentStatus, AgentSummary, AiInfo, MerabError, Message,
-    NodeInfo, ProtocolKind, ProxyStats, Session, SystemStatus,
+    NodeInfo, ProtocolKind, ProxyStats, Session, SystemStatus, ProjectStats,
 };
 use merab_store::Database;
 use merab_transport::a2a::{A2aClient, AgentCard, TaskResponse};
@@ -161,6 +161,12 @@ pub trait MerabApi {
         project_path: String,
         limit: u32,
     ) -> Result<Vec<Session>, ErrorObjectOwned>;
+
+    #[method(name = "merab.session.stats")]
+    async fn session_stats(
+        &self,
+        project_path: String,
+    ) -> Result<ProjectStats, ErrorObjectOwned>;
 }
 
 pub struct MerabRpc {
@@ -643,5 +649,20 @@ impl MerabApiServer for MerabRpc {
         let db = self.db.lock().await;
         db.list_sessions(&project_path, limit)
             .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))
+    }
+
+    async fn session_stats(
+        &self,
+        project_path: String,
+    ) -> Result<ProjectStats, ErrorObjectOwned> {
+        let db = self.db.lock().await;
+        let stats = db.get_project_stats(&project_path)
+            .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))?;
+        Ok(ProjectStats {
+            total_sessions: stats.total_sessions,
+            total_tokens_input: stats.total_tokens_input,
+            total_tokens_output: stats.total_tokens_output,
+            total_cost_usd: stats.total_cost_usd,
+        })
     }
 }

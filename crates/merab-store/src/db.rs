@@ -98,7 +98,10 @@ impl Database {
                 artifacts    TEXT NOT NULL,
                 status       TEXT NOT NULL,
                 created_at   TEXT NOT NULL,
-                completed_at TEXT
+                completed_at TEXT,
+                tokens_input  INTEGER DEFAULT 0,
+                tokens_output INTEGER DEFAULT 0,
+                cost_usd     REAL DEFAULT 0.0
             );
 
             CREATE INDEX IF NOT EXISTS idx_sessions_project
@@ -109,6 +112,9 @@ impl Database {
         // Migrate existing databases: add new columns if missing
         self.add_column_if_missing("agents", "stopped_at", "TEXT")?;
         self.add_column_if_missing("agents", "exit_code", "INTEGER")?;
+        self.add_column_if_missing("sessions", "tokens_input", "INTEGER DEFAULT 0")?;
+        self.add_column_if_missing("sessions", "tokens_output", "INTEGER DEFAULT 0")?;
+        self.add_column_if_missing("sessions", "cost_usd", "REAL DEFAULT 0.0")?;
 
         Ok(())
     }

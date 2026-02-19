@@ -39,3 +39,17 @@ pub struct AiInfo {
     pub max_tokens: u32,
     pub temperature: f32,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectStats {
+    pub total_sessions: u64,
+    pub total_tokens_input: u64,
+    pub total_tokens_output: u64,
+    pub total_cost_usd: f64,
+}
+
+impl ProjectStats {
+    pub fn total_tokens(&self) -> u64 {
+        self.total_tokens_input + self.total_tokens_output
+    }
+}

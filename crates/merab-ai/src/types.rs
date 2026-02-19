@@ -75,11 +75,18 @@ pub struct ChatChoiceMessage {
     pub content: Option<String>,
 }
 
-/// Response from the LLM proxy (OpenAI-compatible).
 #[derive(Debug, Deserialize)]
 pub struct ChatCompletionResponse {
     pub choices: Vec<ChatChoice>,
     pub model: Option<String>,
+    pub usage: Option<ApiResponseUsage>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ApiResponseUsage {
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub total_tokens: Option<u64>,
 }
 
 /// Parsed tool call extracted from LLM response content.
@@ -89,7 +96,6 @@ pub struct ToolCall {
     pub arguments: serde_json::Value,
 }
 
-/// High-level response from AI operations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiResponse {
     pub content: String,
@@ -97,4 +103,6 @@ pub struct AiResponse {
     pub tool_call: Option<ToolCall>,
     #[serde(default)]
     pub artifacts: Option<ArtifactLog>,
+    #[serde(default)]
+    pub usage: Option<merab_core::TokenUsage>,
 }

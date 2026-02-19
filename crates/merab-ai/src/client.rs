@@ -7,6 +7,7 @@ use crate::types::{
     AiClientConfig, AiResponse, ChatCompletionRequest, ChatCompletionResponse, ChatMessage,
     ToolCall,
 };
+use merab_core::TokenUsage;
 
 const MAX_RETRIES: u32 = 3;
 const BASE_DELAY_MS: u64 = 1000;
@@ -108,19 +109,26 @@ impl AiClient {
         self.chat(vec![ChatMessage::user(question)]).await
     }
 
-    /// Parse the LLM response, extracting tool calls if present.
     fn parse_response(&self, resp: ChatCompletionResponse) -> Result<AiResponse, AiError> {
         let choice = resp.choices.first().ok_or(AiError::EmptyResponse)?;
         let content = choice.message.content.clone().unwrap_or_default();
 
-        // Try to detect a tool_call JSON block in the content
         let tool_call = Self::extract_tool_call(&content);
+
+        let usage = resp.usage.map(|u| {
+            TokenUsage::new(
+                u.prompt_tokens,
+                u.completion_tokens,
+                resp.model.clone().unwrap_or_default(),
+            )
+        });
 
         Ok(AiResponse {
             content,
             model: resp.model,
             tool_call,
             artifacts: None,
+            usage,
         })
     }
 

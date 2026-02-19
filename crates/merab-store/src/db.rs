@@ -160,6 +160,12 @@ impl Database {
             );
             CREATE INDEX IF NOT EXISTS idx_code_index_project_name
                 ON code_index(project_path, name);
+
+            CREATE TABLE IF NOT EXISTS projects (
+                path        TEXT PRIMARY KEY,
+                name        TEXT NOT NULL,
+                last_active TEXT NOT NULL
+            );
             ",
         )?;
 

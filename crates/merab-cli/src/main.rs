@@ -12,6 +12,7 @@ mod event_tail;
 mod git_utils;
 mod index_cmd;
 mod jobs_cmd;
+mod project_cmd;
 mod project_context;
 mod review;
 mod self_upgrade;
@@ -86,6 +87,14 @@ enum Commands {
         #[arg(long)]
         dry_run: bool,
     },
+    /// List and manage projects
+    #[command(subcommand)]
+    Projects(ProjectCommands),
+    /// Switch active project context
+    Switch {
+        /// Path to the project directory
+        path: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -100,6 +109,12 @@ pub enum MemoryCommands {
 pub enum IndexCommands {
     Build,
     Search { query: String, #[arg(long, short)] kind: Option<String>, #[arg(long, default_value = "20")] limit: usize },
+}
+
+#[derive(Subcommand)]
+pub enum ProjectCommands {
+    /// List all known projects
+    List,
 }
 
 #[tokio::main]

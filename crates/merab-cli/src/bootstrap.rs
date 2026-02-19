@@ -32,6 +32,14 @@ pub async fn ensure_ready(url: &str) -> Result<MerabClient> {
     ensure_agents(&client).await?;
     store_project_context(&client).await;
 
+    // Register the current project for multi-project tracking
+    let project_path = std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    if !project_path.is_empty() {
+        let _ = client.project_touch(&project_path).await;
+    }
+
     Ok(client)
 }
 

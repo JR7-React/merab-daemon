@@ -1,6 +1,6 @@
 use anyhow::Result;
 use merab_ai::{AiResponse, ChatMessage};
-use merab_core::{AgentManifest, AgentRecord, AgentSummary, Message, Session};
+use merab_core::{AgentManifest, AgentRecord, AgentSummary, Message, ProjectInfo, Session};
 use merab_store::{ConvMessage, ConvSummary};
 use merab_transport::a2a::{AgentCard, TaskResponse};
 use serde::{Deserialize, Serialize};
@@ -26,6 +26,23 @@ impl MerabClient {
     pub fn new(url: &str) -> Result<Self> {
         let client = HttpClientBuilder::default().build(url)?;
         Ok(Self { client })
+    }
+
+    /// Get the current project path: active-project override or CWD.
+    pub fn current_project_path() -> String {
+        // Check override file first
+        if let Some(config_dir) = dirs::config_dir() {
+            let override_file = config_dir.join("merab").join("active-project");
+            if let Ok(content) = std::fs::read_to_string(&override_file) {
+                let trimmed = content.trim().to_string();
+                if !trimmed.is_empty() {
+                    return trimmed;
+                }
+            }
+        }
+        std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| ".".to_string())
     }
 
     pub async fn ping(&self) -> Result<String> {
@@ -386,5 +403,19 @@ impl MerabClient {
         let result: Vec<merab_store::IndexedSymbol> =
             self.client.request("merab.index.search", params).await?;
         Ok(result)
+    }
+
+    pub async fn project_list(&self, limit: Option<u32>) -> Result<Vec<ProjectInfo>> {
+        let mut params = ObjectParams::new();
+        params.insert("limit", limit)?;
+        let result: Vec<ProjectInfo> = self.client.request("merab.project.list", params).await?;
+        Ok(result)
+    }
+
+    pub async fn project_touch(&self, path: &str) -> Result<()> {
+        let mut params = ObjectParams::new();
+        params.insert("path", path)?;
+        let _: () = self.client.request("merab.project.touch", params).await?;
+        Ok(())
     }
 }

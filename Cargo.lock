@@ -1856,6 +1856,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "glob",
+ "regex",
  "rmcp",
  "serde",
  "serde_json",

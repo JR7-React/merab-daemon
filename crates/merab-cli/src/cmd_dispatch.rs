@@ -1,7 +1,7 @@
 use anyhow::Result;
 use crate::client::MerabClient;
-use crate::{agent_cmd, ask_cmd, bootstrap, chat_cmd, doctor, index_cmd, jobs_cmd, sessions_cmd, watch};
-use crate::{Commands, MemoryCommands, IndexCommands};
+use crate::{agent_cmd, ask_cmd, bootstrap, chat_cmd, doctor, index_cmd, jobs_cmd, project_cmd, sessions_cmd, watch};
+use crate::{Commands, MemoryCommands, IndexCommands, ProjectCommands};
 
 pub async fn dispatch(command: Commands, client: MerabClient, url: &str) -> Result<()> {
     match command {
@@ -205,6 +205,19 @@ pub async fn dispatch(command: Commands, client: MerabClient, url: &str) -> Resu
             let merab_root = crate::detect_merab_root()?;
             let cfg = crate::self_upgrade::SelfUpgradeConfig { task, yes, dry_run, merab_root };
             crate::self_upgrade::run_self_upgrade(&client, cfg).await?;
+        }
+
+        Commands::Projects(cmd) => {
+            let ready_client = bootstrap::ensure_ready(url).await?;
+            match cmd {
+                ProjectCommands::List => {
+                    project_cmd::run_list(&ready_client).await?;
+                }
+            }
+        }
+
+        Commands::Switch { path } => {
+            project_cmd::run_switch(&path)?;
         }
     }
 

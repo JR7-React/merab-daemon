@@ -5,7 +5,7 @@ use merab_ai::{AiResponse, ChatMessage};
 use merab_config::MerabConfig;
 use merab_core::{
     AgentManifest, AgentRecord, AgentStats, AgentSummary, AiInfo, MerabError, Message,
-    NodeInfo, ProxyStats, Session, SystemStatus, ProjectStats,
+    NodeInfo, ProjectInfo, ProxyStats, Session, SystemStatus, ProjectStats,
 };
 use merab_store::Database;
 use merab_transport::a2a::{AgentCard, TaskResponse};
@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use crate::mcp_manager::McpManager;
 use crate::registry::AgentRegistry;
-use crate::rpc::{agent_impls, ai_methods, job_impls, store_impls};
+use crate::rpc::{agent_impls, ai_methods, job_impls, project_impls, store_impls};
 use crate::supervisor::ProcessSupervisor;
 
 #[rpc(server)]
@@ -151,6 +151,12 @@ pub trait MerabApi {
 
     #[method(name = "merab.index.search")]
     async fn index_search(&self, project_path: String, query: String, kind: Option<String>, limit: usize) -> Result<Vec<merab_store::IndexedSymbol>, ErrorObjectOwned>;
+
+    #[method(name = "merab.project.list")]
+    async fn project_list(&self, limit: Option<u32>) -> Result<Vec<ProjectInfo>, ErrorObjectOwned>;
+
+    #[method(name = "merab.project.touch")]
+    async fn project_touch(&self, path: String) -> Result<(), ErrorObjectOwned>;
 }
 
 pub struct MerabRpc {
@@ -427,5 +433,13 @@ impl MerabApiServer for MerabRpc {
 
     async fn index_search(&self, project_path: String, query: String, kind: Option<String>, limit: usize) -> Result<Vec<merab_store::IndexedSymbol>, ErrorObjectOwned> {
         crate::rpc::index_impls::index_search(self, project_path, query, kind, limit).await
+    }
+
+    async fn project_list(&self, limit: Option<u32>) -> Result<Vec<ProjectInfo>, ErrorObjectOwned> {
+        project_impls::project_list(self, limit).await
+    }
+
+    async fn project_touch(&self, path: String) -> Result<(), ErrorObjectOwned> {
+        project_impls::project_touch(self, path).await
     }
 }

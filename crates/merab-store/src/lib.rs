@@ -6,6 +6,7 @@ pub mod index;
 pub mod jobs;
 pub mod memory;
 pub mod messages;
+pub mod projects;
 pub mod sessions;
 pub mod tasks;
 

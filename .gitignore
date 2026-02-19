@@ -9,3 +9,5 @@ forge.toml
 ask_output.txt
 debug_forge.ps1
 start_error.log
+.claude/
+.claude/settings.local.json

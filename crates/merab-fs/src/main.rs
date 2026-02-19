@@ -1,3 +1,5 @@
+mod patch;
+
 use glob::glob;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -117,7 +119,7 @@ fn handle_list_tools(req: &JsonRpcRequest) -> JsonRpcResponse {
             },
             {
                 "name": "fs.write",
-                "description": "Write content to a file",
+                "description": "Write content to a file. Use ONLY for new files.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -125,6 +127,18 @@ fn handle_list_tools(req: &JsonRpcRequest) -> JsonRpcResponse {
                         "content": { "type": "string", "description": "Content to write" }
                     },
                     "required": ["path", "content"]
+                }
+            },
+            {
+                "name": "fs.patch",
+                "description": "Apply a unified diff to an existing file. Prefer this over fs.write for modifications.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Absolute path to the file" },
+                        "diff": { "type": "string", "description": "Unified diff in standard format (@@ -L,N +L,N @@)" }
+                    },
+                    "required": ["path", "diff"]
                 }
             },
             {
@@ -153,6 +167,7 @@ fn handle_call_tool(req: &JsonRpcRequest, root_dir: &Path) -> JsonRpcResponse {
         Some("fs.list") => tool_list(args, root_dir),
         Some("fs.read") => tool_read(args, root_dir),
         Some("fs.write") => tool_write(args, root_dir),
+        Some("fs.patch") => tool_patch(args, root_dir),
         Some("fs.search") => tool_search(args, root_dir),
         _ => return json_error(req.id.clone(), -32601, "Tool not found"),
     };
@@ -266,6 +281,32 @@ fn tool_write(args: Option<&Value>, root: &Path) -> anyhow::Result<String> {
     file.write_all(content.as_bytes())?;
 
     Ok(format!("Successfully wrote to {}", path_str))
+}
+
+fn tool_patch(args: Option<&Value>, root: &Path) -> anyhow::Result<String> {
+    let args = args.ok_or(anyhow::anyhow!("Missing arguments"))?;
+    let path_str = args
+        .get("path")
+        .and_then(|v| v.as_str())
+        .ok_or(anyhow::anyhow!("Missing path"))?;
+    let diff = args
+        .get("diff")
+        .and_then(|v| v.as_str())
+        .ok_or(anyhow::anyhow!("Missing diff"))?;
+
+    let target_path = resolve_path(root, path_str)?;
+    
+    // Use tokio runtime to run async patch
+    let rt = tokio::runtime::Runtime::new()?;
+    let result = rt.block_on(patch::apply_patch(
+        target_path.to_string_lossy().as_ref(),
+        diff
+    ))?;
+    
+    let message = result["message"].as_str()
+        .unwrap_or("Patch applied successfully");
+    
+    Ok(message.to_string())
 }
 
 fn tool_search(args: Option<&Value>, root: &Path) -> anyhow::Result<String> {

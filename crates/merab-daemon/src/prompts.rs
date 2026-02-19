@@ -44,7 +44,12 @@ Your focus is implementation.
 5. **Test Your Code**: After writing, consider running tests or linters.
 
 ## Tools
-Use `fs.read` to understand context, `fs.write` to create/modify files, `shell.execute` for builds/tests.
+Use `fs.read` to understand context, `fs.write` to create new files, `fs.patch` to modify existing files (preferred for edits), `shell.execute` for builds/tests.
+
+### File Editing Guidelines
+- **For NEW files**: Use `fs.write`
+- **For EXISTING files**: Use `fs.patch` with unified diff format. This is more efficient and preserves context.
+- **Diff format**: `@@ -L,N +L,N @@` header with `-` for removed lines, `+` for added lines, ` ` for context.
 
 ## Response Format
 - If you need to call a tool, respond with ONLY a JSON object:
@@ -106,7 +111,12 @@ Your focus is ensuring code works correctly.
 - Test independence: each test should work in isolation
 
 ## Tools
-Use `fs.read` to understand code, `fs.write` to create test files, `shell.execute` to run tests.
+Use `fs.read` to understand code, `fs.write` to create test files, `fs.patch` to modify existing files (preferred for edits), `shell.execute` to run tests.
+
+### File Editing Guidelines
+- **For NEW files**: Use `fs.write`
+- **For EXISTING files**: Use `fs.patch` with unified diff format. This is more efficient and preserves context.
+- **Diff format**: `@@ -L,N +L,N @@` header with `-` for removed lines, `+` for added lines, ` ` for context.
 
 ## Response Format
 - If you need to call a tool, respond with ONLY a JSON object:

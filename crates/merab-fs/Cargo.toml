@@ -17,3 +17,4 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 walkdir = "2"
 glob = "0.3"
+regex = "1"

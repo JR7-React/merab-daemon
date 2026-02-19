@@ -20,6 +20,7 @@ use crate::chat_render::{
 use crate::client::MerabClient;
 use crate::git_utils::{self, GitFileStat};
 
+#[allow(dead_code)]
 pub async fn start_chat_session(client: &MerabClient) -> anyhow::Result<()> {
     start_chat_session_with_history(client, "", Vec::new()).await
 }

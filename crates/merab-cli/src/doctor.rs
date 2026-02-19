@@ -74,7 +74,7 @@ async fn check_daemon(client: &Option<&MerabClient>, checks: &mut Vec<CheckResul
                     suggestion: None,
                 });
             }
-            Err(e) => {
+            Err(_e) => {
                 checks.push(CheckResult {
                     name: "Daemon".into(),
                     category: "Sistema".into(),

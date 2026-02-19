@@ -1,5 +1,4 @@
 use anyhow::Result;
-use merab_core::AgentSummary;
 
 use crate::client::MerabClient;
 

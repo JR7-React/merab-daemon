@@ -4,11 +4,11 @@ use std::time::Instant;
 use merab_ai::{AiResponse, ChatMessage};
 use merab_config::MerabConfig;
 use merab_core::{
-    AgentManifest, AgentRecord, AgentStats, AgentStatus, AgentSummary, AiInfo, MerabError, Message,
-    NodeInfo, ProtocolKind, ProxyStats, Session, SystemStatus, ProjectStats,
+    AgentManifest, AgentRecord, AgentStats, AgentSummary, AiInfo, MerabError, Message,
+    NodeInfo, ProxyStats, Session, SystemStatus, ProjectStats,
 };
 use merab_store::Database;
-use merab_transport::a2a::{A2aClient, AgentCard, TaskResponse};
+use merab_transport::a2a::{AgentCard, TaskResponse};
 use merab_transport::mcp::McpToolInfo;
 use jsonrpsee::core::async_trait;
 use jsonrpsee::proc_macros::rpc;
@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use crate::mcp_manager::McpManager;
 use crate::registry::AgentRegistry;
-use crate::rpc::ai_methods;
+use crate::rpc::{agent_impls, ai_methods, job_impls, store_impls};
 use crate::supervisor::ProcessSupervisor;
 
 #[rpc(server)]
@@ -27,10 +27,7 @@ pub trait MerabApi {
     async fn ping(&self) -> Result<String, ErrorObjectOwned>;
 
     #[method(name = "merab.registerAgent")]
-    async fn register_agent(
-        &self,
-        manifest: AgentManifest,
-    ) -> Result<AgentRecord, ErrorObjectOwned>;
+    async fn register_agent(&self, manifest: AgentManifest) -> Result<AgentRecord, ErrorObjectOwned>;
 
     #[method(name = "merab.listAgents")]
     async fn list_agents(&self) -> Result<Vec<AgentSummary>, ErrorObjectOwned>;
@@ -48,19 +45,10 @@ pub trait MerabApi {
     async fn unregister_agent(&self, id: String) -> Result<bool, ErrorObjectOwned>;
 
     #[method(name = "merab.sendMessage")]
-    async fn send_message(
-        &self,
-        from: String,
-        to: String,
-        content: String,
-    ) -> Result<Message, ErrorObjectOwned>;
+    async fn send_message(&self, from: String, to: String, content: String) -> Result<Message, ErrorObjectOwned>;
 
     #[method(name = "merab.broadcastMessage")]
-    async fn broadcast_message(
-        &self,
-        from: String,
-        content: String,
-    ) -> Result<Message, ErrorObjectOwned>;
+    async fn broadcast_message(&self, from: String, content: String) -> Result<Message, ErrorObjectOwned>;
 
     #[method(name = "merab.getMessages")]
     async fn get_messages(&self, agent_id: String) -> Result<Vec<Message>, ErrorObjectOwned>;
@@ -72,38 +60,19 @@ pub trait MerabApi {
     async fn list_tools(&self, agent_id: String) -> Result<Vec<McpToolInfo>, ErrorObjectOwned>;
 
     #[method(name = "merab.callTool")]
-    async fn call_tool(
-        &self,
-        agent_id: String,
-        tool_name: String,
-        arguments: serde_json::Value,
-    ) -> Result<serde_json::Value, ErrorObjectOwned>;
+    async fn call_tool(&self, agent_id: String, tool_name: String, arguments: serde_json::Value) -> Result<serde_json::Value, ErrorObjectOwned>;
 
     #[method(name = "merab.a2aDiscover")]
     async fn a2a_discover(&self, url: String) -> Result<AgentCard, ErrorObjectOwned>;
 
     #[method(name = "merab.a2aSend")]
-    async fn a2a_send(
-        &self,
-        url: String,
-        skill: String,
-        input: serde_json::Value,
-    ) -> Result<TaskResponse, ErrorObjectOwned>;
+    async fn a2a_send(&self, url: String, skill: String, input: serde_json::Value) -> Result<TaskResponse, ErrorObjectOwned>;
 
     #[method(name = "merab.a2aGetTask")]
-    async fn a2a_get_task(
-        &self,
-        url: String,
-        task_id: String,
-    ) -> Result<merab_transport::a2a::TaskDetails, ErrorObjectOwned>;
+    async fn a2a_get_task(&self, url: String, task_id: String) -> Result<merab_transport::a2a::TaskDetails, ErrorObjectOwned>;
 
     #[method(name = "merab.memory.put")]
-    async fn memory_put(
-        &self,
-        key: String,
-        value: serde_json::Value,
-        ttl_seconds: Option<u64>,
-    ) -> Result<bool, ErrorObjectOwned>;
+    async fn memory_put(&self, key: String, value: serde_json::Value, ttl_seconds: Option<u64>) -> Result<bool, ErrorObjectOwned>;
 
     #[method(name = "merab.memory.get")]
     async fn memory_get(&self, key: String) -> Result<Option<serde_json::Value>, ErrorObjectOwned>;
@@ -117,37 +86,20 @@ pub trait MerabApi {
     #[method(name = "merab.getSystemStatus")]
     async fn get_system_status(&self) -> Result<SystemStatus, ErrorObjectOwned>;
 
-    // AI methods
     #[method(name = "merab.ai.chat")]
-    async fn ai_chat(
-        &self,
-        message: String,
-        context_json: String,
-    ) -> Result<AiResponse, ErrorObjectOwned>;
+    async fn ai_chat(&self, message: String, context_json: String) -> Result<AiResponse, ErrorObjectOwned>;
 
     #[method(name = "merab.ai.orchestrate")]
     async fn ai_orchestrate(&self, task: String) -> Result<AiResponse, ErrorObjectOwned>;
 
     #[method(name = "merab.ai.orchestrate.stream")]
-    async fn ai_orchestrate_stream(
-        &self,
-        task: String,
-        event_file: String,
-    ) -> Result<AiResponse, ErrorObjectOwned>;
+    async fn ai_orchestrate_stream(&self, task: String, event_file: String) -> Result<AiResponse, ErrorObjectOwned>;
 
     #[method(name = "merab.ai.orchestrate.withTests")]
-    async fn ai_orchestrate_with_tests(
-        &self,
-        task: String,
-        event_file: String,
-    ) -> Result<AiResponse, ErrorObjectOwned>;
+    async fn ai_orchestrate_with_tests(&self, task: String, event_file: String) -> Result<AiResponse, ErrorObjectOwned>;
 
     #[method(name = "merab.ai.executeTool")]
-    async fn ai_execute_tool(
-        &self,
-        tool_name: String,
-        arguments: serde_json::Value,
-    ) -> Result<serde_json::Value, ErrorObjectOwned>;
+    async fn ai_execute_tool(&self, tool_name: String, arguments: serde_json::Value) -> Result<serde_json::Value, ErrorObjectOwned>;
 
     #[method(name = "merab.ai.plan")]
     async fn ai_plan(&self, task: String) -> Result<serde_json::Value, ErrorObjectOwned>;
@@ -155,56 +107,29 @@ pub trait MerabApi {
     #[method(name = "merab.ai.executePlan")]
     async fn ai_execute_plan(&self, plan_json: String) -> Result<serde_json::Value, ErrorObjectOwned>;
 
-    // Session methods
     #[method(name = "merab.session.getLast")]
-    async fn session_get_last(
-        &self,
-        project_path: String,
-    ) -> Result<Option<Session>, ErrorObjectOwned>;
+    async fn session_get_last(&self, project_path: String) -> Result<Option<Session>, ErrorObjectOwned>;
 
     #[method(name = "merab.session.list")]
-    async fn session_list(
-        &self,
-        project_path: String,
-        limit: u32,
-    ) -> Result<Vec<Session>, ErrorObjectOwned>;
+    async fn session_list(&self, project_path: String, limit: u32) -> Result<Vec<Session>, ErrorObjectOwned>;
 
     #[method(name = "merab.session.stats")]
-    async fn session_stats(
-        &self,
-        project_path: String,
-    ) -> Result<ProjectStats, ErrorObjectOwned>;
+    async fn session_stats(&self, project_path: String) -> Result<ProjectStats, ErrorObjectOwned>;
 
-    // Job methods
     #[method(name = "merab.job.submit")]
-    async fn job_submit(
-        &self,
-        task: String,
-    ) -> Result<String, ErrorObjectOwned>;
+    async fn job_submit(&self, task: String) -> Result<String, ErrorObjectOwned>;
 
     #[method(name = "merab.job.status")]
-    async fn job_status(
-        &self,
-        job_id: String,
-    ) -> Result<Option<crate::jobs::JobSummary>, ErrorObjectOwned>;
+    async fn job_status(&self, job_id: String) -> Result<Option<crate::jobs::JobSummary>, ErrorObjectOwned>;
 
     #[method(name = "merab.job.log")]
-    async fn job_log(
-        &self,
-        job_id: String,
-    ) -> Result<String, ErrorObjectOwned>;
+    async fn job_log(&self, job_id: String) -> Result<String, ErrorObjectOwned>;
 
     #[method(name = "merab.job.list")]
-    async fn job_list(
-        &self,
-        limit: Option<u32>,
-    ) -> Result<Vec<crate::jobs::JobSummary>, ErrorObjectOwned>;
+    async fn job_list(&self, limit: Option<u32>) -> Result<Vec<crate::jobs::JobSummary>, ErrorObjectOwned>;
 
     #[method(name = "merab.job.cancel")]
-    async fn job_cancel(
-        &self,
-        job_id: String,
-    ) -> Result<bool, ErrorObjectOwned>;
+    async fn job_cancel(&self, job_id: String) -> Result<bool, ErrorObjectOwned>;
 }
 
 pub struct MerabRpc {
@@ -221,7 +146,7 @@ pub(crate) fn to_rpc_error(e: MerabError) -> ErrorObjectOwned {
     ErrorObjectOwned::owned(e.code(), e.to_string(), None::<()>)
 }
 
-fn parse_id(id: &str) -> Result<Uuid, ErrorObjectOwned> {
+pub(crate) fn parse_id(id: &str) -> Result<Uuid, ErrorObjectOwned> {
     Uuid::parse_str(id)
         .map_err(|_| to_rpc_error(MerabError::InvalidManifest("invalid agent id".into())))
 }
@@ -232,371 +157,87 @@ impl MerabApiServer for MerabRpc {
         Ok("pong".to_string())
     }
 
-    async fn register_agent(
-        &self,
-        manifest: AgentManifest,
-    ) -> Result<AgentRecord, ErrorObjectOwned> {
-        let record = AgentRecord::new(manifest);
-        if self.registry.get(record.id).await.is_ok() {
-            return Err(to_rpc_error(MerabError::AlreadyExists(
-                record.id.to_string(),
-            )));
-        }
-        {
-            let db = self.db.lock().await;
-            db.insert_agent(&record)
-                .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))?;
-        }
-        self.registry
-            .register(record.clone())
-            .await
-            .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
-        tracing::info!(id = %record.id, name = %record.manifest.name, "agent registered");
-        Ok(record)
+    async fn register_agent(&self, manifest: AgentManifest) -> Result<AgentRecord, ErrorObjectOwned> {
+        agent_impls::register_agent(self, manifest).await
     }
 
     async fn list_agents(&self) -> Result<Vec<AgentSummary>, ErrorObjectOwned> {
-        Ok(self.registry.list().await)
+        agent_impls::list_agents(self).await
     }
 
     async fn get_agent(&self, id: String) -> Result<AgentRecord, ErrorObjectOwned> {
-        let uuid = parse_id(&id)?;
-        self.registry
-            .get(uuid)
-            .await
-            .map_err(|_| to_rpc_error(MerabError::AgentNotFound(uuid)))
+        agent_impls::get_agent(self, id).await
     }
 
     async fn start_agent(&self, id: String) -> Result<AgentRecord, ErrorObjectOwned> {
-        let uuid = parse_id(&id)?;
-        let record = self
-            .registry
-            .get(uuid)
-            .await
-            .map_err(|_| to_rpc_error(MerabError::AgentNotFound(uuid)))?;
-        if record.status == AgentStatus::Running {
-            return Err(to_rpc_error(MerabError::AlreadyRunning(uuid)));
-        }
-        let manifest = &record.manifest;
-        let is_mcp = manifest.protocol == ProtocolKind::Mcp;
-        let mut cmd = tokio::process::Command::new(&manifest.command);
-        cmd.args(&manifest.args);
-        if let Some(dir) = &manifest.working_dir {
-            cmd.current_dir(dir);
-        }
-        if is_mcp {
-            cmd.stdin(std::process::Stdio::piped());
-            cmd.stdout(std::process::Stdio::piped());
-            cmd.stderr(std::process::Stdio::null());
-            let mcp_client = merab_transport::mcp::McpClient::connect(uuid, cmd)
-                .await
-                .map_err(|e| to_rpc_error(MerabError::Transport(e.to_string())))?;
-            self.registry
-                .update_status(uuid, AgentStatus::Running, None)
-                .await
-                .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
-            {
-                let db = self.db.lock().await;
-                let _ = db.update_agent_status(uuid, AgentStatus::Running, None);
-            }
-            self.mcp_manager.add_client(uuid, mcp_client).await;
-            tracing::info!(id = %uuid, "MCP agent started");
-        } else {
-            cmd.stdout(std::process::Stdio::null());
-            cmd.stderr(std::process::Stdio::null());
-            let job_object = match merab_sandbox::JobObject::new() {
-                Ok(job) => {
-                    if self.config.sandbox.enabled {
-                        let limit_bytes = self.config.sandbox.memory_limit_mb * 1024 * 1024;
-                        if let Err(e) = job.set_memory_limit(limit_bytes) {
-                            tracing::warn!(id = %uuid, error = %e, "failed to set memory limit");
-                        }
-                    }
-                    Some(job)
-                }
-                Err(e) => {
-                    tracing::warn!(id = %uuid, error = %e, "failed to create job object");
-                    None
-                }
-            };
-            let child = cmd.spawn().map_err(|e| {
-                to_rpc_error(MerabError::Internal(format!(
-                    "failed to start process: {}",
-                    e
-                )))
-            })?;
-            let pid = child.id();
-            if let (Some(pid), Some(job)) = (pid, &job_object) {
-                if let Err(e) = job.assign_process(pid) {
-                    tracing::warn!(id = %uuid, error = %e, "failed to assign to sandbox");
-                }
-            }
-            self.registry
-                .update_status(uuid, AgentStatus::Running, pid)
-                .await
-                .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
-            {
-                let db = self.db.lock().await;
-                let _ = db.update_agent_status(uuid, AgentStatus::Running, pid);
-            }
-            self.supervisor
-                .start_monitoring(uuid, child, record.manifest.clone(), job_object)
-                .await;
-            tracing::info!(id = %uuid, pid = ?pid, "agent started");
-        }
-        self.registry
-            .get(uuid)
-            .await
-            .map_err(|_| to_rpc_error(MerabError::AgentNotFound(uuid)))
+        agent_impls::start_agent(self, id).await
     }
 
     async fn stop_agent(&self, id: String) -> Result<AgentRecord, ErrorObjectOwned> {
-        let uuid = parse_id(&id)?;
-        let record = self
-            .registry
-            .get(uuid)
-            .await
-            .map_err(|_| to_rpc_error(MerabError::AgentNotFound(uuid)))?;
-        if record.status != AgentStatus::Running {
-            return Err(to_rpc_error(MerabError::NotRunning(uuid)));
-        }
-        if record.manifest.protocol == ProtocolKind::Mcp {
-            self.mcp_manager.remove_client(uuid).await;
-        }
-        self.supervisor.stop_agent(uuid).await;
-        self.registry
-            .update_status(uuid, AgentStatus::Stopped, None)
-            .await
-            .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
-        {
-            let db = self.db.lock().await;
-            let _ = db.update_agent_status(uuid, AgentStatus::Stopped, None);
-        }
-        tracing::info!(id = %uuid, "agent stopped");
-        self.registry
-            .get(uuid)
-            .await
-            .map_err(|_| to_rpc_error(MerabError::AgentNotFound(uuid)))
+        agent_impls::stop_agent(self, id).await
     }
 
     async fn unregister_agent(&self, id: String) -> Result<bool, ErrorObjectOwned> {
-        let uuid = parse_id(&id)?;
-        let record = self
-            .registry
-            .get(uuid)
-            .await
-            .map_err(|_| to_rpc_error(MerabError::AgentNotFound(uuid)))?;
-        if record.status == AgentStatus::Running {
-            self.stop_agent(id).await?;
-        }
-        self.mcp_manager.remove_client(uuid).await;
-        self.registry
-            .remove(uuid)
-            .await
-            .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
-        {
-            let db = self.db.lock().await;
-            db.delete_agent_messages(uuid)
-                .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
-            db.delete_agent(uuid)
-                .map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))?;
-        }
-        Ok(true)
+        agent_impls::unregister_agent(self, id).await
     }
 
-    async fn send_message(
-        &self,
-        from: String,
-        to: String,
-        content: String,
-    ) -> Result<Message, ErrorObjectOwned> {
-        let from_id = parse_id(&from)?;
-        let to_id = parse_id(&to)?;
-        self.registry
-            .get(from_id)
-            .await
-            .map_err(|_| to_rpc_error(MerabError::AgentNotFound(from_id)))?;
-        self.registry
-            .get(to_id)
-            .await
-            .map_err(|_| to_rpc_error(MerabError::AgentNotFound(to_id)))?;
-        let msg = Message::new(from_id, Some(to_id), content);
-        {
-            let db = self.db.lock().await;
-            db.insert_message(&msg)
-                .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))?;
-        }
-        Ok(msg)
+    async fn send_message(&self, from: String, to: String, content: String) -> Result<Message, ErrorObjectOwned> {
+        store_impls::send_message(self, from, to, content).await
     }
 
-    async fn broadcast_message(
-        &self,
-        from: String,
-        content: String,
-    ) -> Result<Message, ErrorObjectOwned> {
-        let from_id = parse_id(&from)?;
-        self.registry
-            .get(from_id)
-            .await
-            .map_err(|_| to_rpc_error(MerabError::AgentNotFound(from_id)))?;
-        let msg = Message::new(from_id, None, content);
-        {
-            let db = self.db.lock().await;
-            db.insert_message(&msg)
-                .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))?;
-        }
-        Ok(msg)
+    async fn broadcast_message(&self, from: String, content: String) -> Result<Message, ErrorObjectOwned> {
+        store_impls::broadcast_message(self, from, content).await
     }
 
     async fn get_messages(&self, agent_id: String) -> Result<Vec<Message>, ErrorObjectOwned> {
-        let uuid = parse_id(&agent_id)?;
-        let db = self.db.lock().await;
-        db.get_messages_for(uuid)
-            .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))
+        store_impls::get_messages(self, agent_id).await
     }
 
     async fn ack_message(&self, message_id: String) -> Result<bool, ErrorObjectOwned> {
-        let uuid = parse_id(&message_id)?;
-        let db = self.db.lock().await;
-        let updated = db
-            .acknowledge_message(uuid)
-            .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))?;
-        if !updated {
-            return Err(to_rpc_error(MerabError::MessageNotFound(uuid)));
-        }
-        Ok(true)
+        store_impls::ack_message(self, message_id).await
     }
 
     async fn list_tools(&self, agent_id: String) -> Result<Vec<McpToolInfo>, ErrorObjectOwned> {
-        let uuid = parse_id(&agent_id)?;
-        let record = self
-            .registry
-            .get(uuid)
-            .await
-            .map_err(|_| to_rpc_error(MerabError::AgentNotFound(uuid)))?;
-        if record.manifest.protocol != ProtocolKind::Mcp {
-            return Err(to_rpc_error(MerabError::InvalidManifest(
-                "not an MCP agent".into(),
-            )));
-        }
-        if record.status != AgentStatus::Running {
-            return Err(to_rpc_error(MerabError::NotRunning(uuid)));
-        }
-        let client = self.mcp_manager.get_client(uuid).await.ok_or_else(|| {
-            to_rpc_error(MerabError::Internal(
-                "MCP client not found despite agent running".into(),
-            ))
-        })?;
-        client
-            .list_tools()
-            .await
-            .map_err(|e| to_rpc_error(MerabError::Transport(e.to_string())))
+        agent_impls::list_tools(self, agent_id).await
     }
 
-    async fn call_tool(
-        &self,
-        agent_id: String,
-        tool_name: String,
-        arguments: serde_json::Value,
-    ) -> Result<serde_json::Value, ErrorObjectOwned> {
-        let uuid = parse_id(&agent_id)?;
-        let record = self
-            .registry
-            .get(uuid)
-            .await
-            .map_err(|_| to_rpc_error(MerabError::AgentNotFound(uuid)))?;
-        if record.status != AgentStatus::Running {
-            return Err(to_rpc_error(MerabError::NotRunning(uuid)));
-        }
-        let client = self.mcp_manager.get_client(uuid).await.ok_or_else(|| {
-            to_rpc_error(MerabError::Internal(
-                "MCP client not found despite agent running".into(),
-            ))
-        })?;
-        let args = match arguments {
-            serde_json::Value::Object(map) => Some(map),
-            serde_json::Value::Null => None,
-            _ => {
-                return Err(to_rpc_error(MerabError::InvalidManifest(
-                    "args must be object".into(),
-                )));
-            }
-        };
-        let result = client
-            .call_tool(tool_name, args)
-            .await
-            .map_err(|e| to_rpc_error(MerabError::Transport(e.to_string())))?;
-        serde_json::to_value(&result).map_err(|e| to_rpc_error(MerabError::Internal(e.to_string())))
+    async fn call_tool(&self, agent_id: String, tool_name: String, arguments: serde_json::Value) -> Result<serde_json::Value, ErrorObjectOwned> {
+        agent_impls::call_tool(self, agent_id, tool_name, arguments).await
     }
 
     async fn a2a_discover(&self, url: String) -> Result<AgentCard, ErrorObjectOwned> {
-        A2aClient::fetch_card(&url)
-            .await
-            .map_err(|e| to_rpc_error(MerabError::Transport(e.to_string())))
+        agent_impls::a2a_discover(self, url).await
     }
 
-    async fn a2a_send(
-        &self,
-        url: String,
-        skill: String,
-        input: serde_json::Value,
-    ) -> Result<TaskResponse, ErrorObjectOwned> {
-        A2aClient::send_task(&url, &skill, input)
-            .await
-            .map_err(|e| to_rpc_error(MerabError::Transport(e.to_string())))
+    async fn a2a_send(&self, url: String, skill: String, input: serde_json::Value) -> Result<TaskResponse, ErrorObjectOwned> {
+        agent_impls::a2a_send(self, url, skill, input).await
     }
 
-    async fn a2a_get_task(
-        &self,
-        url: String,
-        task_id: String,
-    ) -> Result<merab_transport::a2a::TaskDetails, ErrorObjectOwned> {
-        A2aClient::get_task_status(&url, &task_id)
-            .await
-            .map_err(|e| to_rpc_error(MerabError::Transport(e.to_string())))
+    async fn a2a_get_task(&self, url: String, task_id: String) -> Result<merab_transport::a2a::TaskDetails, ErrorObjectOwned> {
+        agent_impls::a2a_get_task(self, url, task_id).await
     }
 
-    async fn memory_put(
-        &self,
-        key: String,
-        value: serde_json::Value,
-        ttl_seconds: Option<u64>,
-    ) -> Result<bool, ErrorObjectOwned> {
-        let db = self.db.lock().await;
-        db.put_memory(&key, &value, None, ttl_seconds)
-            .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))?;
-        let _ = db.cleanup_expired_memory();
-        Ok(true)
+    async fn memory_put(&self, key: String, value: serde_json::Value, ttl_seconds: Option<u64>) -> Result<bool, ErrorObjectOwned> {
+        store_impls::memory_put(self, key, value, ttl_seconds).await
     }
 
     async fn memory_get(&self, key: String) -> Result<Option<serde_json::Value>, ErrorObjectOwned> {
-        let db = self.db.lock().await;
-        db.get_memory(&key)
-            .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))
+        store_impls::memory_get(self, key).await
     }
 
     async fn memory_delete(&self, key: String) -> Result<bool, ErrorObjectOwned> {
-        let db = self.db.lock().await;
-        db.delete_memory(&key)
-            .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))
+        store_impls::memory_delete(self, key).await
     }
 
     async fn memory_list(&self, prefix: Option<String>) -> Result<Vec<String>, ErrorObjectOwned> {
-        let db = self.db.lock().await;
-        db.list_memory_keys(prefix.as_deref())
-            .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))
+        store_impls::memory_list(self, prefix).await
     }
 
     async fn get_system_status(&self) -> Result<SystemStatus, ErrorObjectOwned> {
         let agents_summary = self.registry.list().await;
         let mut agents_stats = Vec::new();
-
         for agent in agents_summary {
-            let memory_usage = self
-                .supervisor
-                .get_agent_memory(agent.id)
-                .await
-                .unwrap_or(0);
+            let memory_usage = self.supervisor.get_agent_memory(agent.id).await.unwrap_or(0);
             agents_stats.push(AgentStats {
                 id: agent.id,
                 name: agent.name,
@@ -605,18 +246,13 @@ impl MerabApiServer for MerabRpc {
                 memory_limit_bytes: self.config.sandbox.memory_limit_mb * 1024 * 1024,
             });
         }
-
         let db = self.db.lock().await;
         let (hits, total) = db
             .get_proxy_stats()
             .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))?;
-
         Ok(SystemStatus {
             agents: agents_stats,
-            proxy: ProxyStats {
-                cache_hits: hits,
-                total_requests: total,
-            },
+            proxy: ProxyStats { cache_hits: hits, total_requests: total },
             node_info: NodeInfo {
                 version: env!("CARGO_PKG_VERSION").to_string(),
                 uptime_seconds: self.start_time.elapsed().as_secs(),
@@ -632,11 +268,7 @@ impl MerabApiServer for MerabRpc {
         })
     }
 
-    async fn ai_chat(
-        &self,
-        message: String,
-        context_json: String,
-    ) -> Result<AiResponse, ErrorObjectOwned> {
+    async fn ai_chat(&self, message: String, context_json: String) -> Result<AiResponse, ErrorObjectOwned> {
         let ctx: Vec<ChatMessage> = serde_json::from_str(&context_json)
             .map_err(|e| to_rpc_error(MerabError::InvalidManifest(e.to_string())))?;
         ai_methods::handle_ai_chat(&self.config, &self.mcp_manager, &self.db, message, ctx).await
@@ -646,29 +278,17 @@ impl MerabApiServer for MerabRpc {
         ai_methods::handle_ai_orchestrate(&self.config, &self.mcp_manager, &self.db, task, None, false).await
     }
 
-    async fn ai_orchestrate_stream(
-        &self,
-        task: String,
-        event_file: String,
-    ) -> Result<AiResponse, ErrorObjectOwned> {
+    async fn ai_orchestrate_stream(&self, task: String, event_file: String) -> Result<AiResponse, ErrorObjectOwned> {
         let path = std::path::PathBuf::from(event_file);
         ai_methods::handle_ai_orchestrate(&self.config, &self.mcp_manager, &self.db, task, Some(path), false).await
     }
 
-    async fn ai_orchestrate_with_tests(
-        &self,
-        task: String,
-        event_file: String,
-    ) -> Result<AiResponse, ErrorObjectOwned> {
+    async fn ai_orchestrate_with_tests(&self, task: String, event_file: String) -> Result<AiResponse, ErrorObjectOwned> {
         let path = std::path::PathBuf::from(event_file);
         ai_methods::handle_ai_orchestrate(&self.config, &self.mcp_manager, &self.db, task, Some(path), true).await
     }
 
-    async fn ai_execute_tool(
-        &self,
-        tool_name: String,
-        arguments: serde_json::Value,
-    ) -> Result<serde_json::Value, ErrorObjectOwned> {
+    async fn ai_execute_tool(&self, tool_name: String, arguments: serde_json::Value) -> Result<serde_json::Value, ErrorObjectOwned> {
         ai_methods::handle_execute_tool(&self.mcp_manager, tool_name, arguments).await
     }
 
@@ -680,29 +300,19 @@ impl MerabApiServer for MerabRpc {
         ai_methods::handle_ai_execute_plan(&self.config, &self.mcp_manager, &self.db, plan_json, None).await
     }
 
-    async fn session_get_last(
-        &self,
-        project_path: String,
-    ) -> Result<Option<Session>, ErrorObjectOwned> {
+    async fn session_get_last(&self, project_path: String) -> Result<Option<Session>, ErrorObjectOwned> {
         let db = self.db.lock().await;
         db.get_last_session(&project_path)
             .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))
     }
 
-    async fn session_list(
-        &self,
-        project_path: String,
-        limit: u32,
-    ) -> Result<Vec<Session>, ErrorObjectOwned> {
+    async fn session_list(&self, project_path: String, limit: u32) -> Result<Vec<Session>, ErrorObjectOwned> {
         let db = self.db.lock().await;
         db.list_sessions(&project_path, limit)
             .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))
     }
 
-    async fn session_stats(
-        &self,
-        project_path: String,
-    ) -> Result<ProjectStats, ErrorObjectOwned> {
+    async fn session_stats(&self, project_path: String) -> Result<ProjectStats, ErrorObjectOwned> {
         let db = self.db.lock().await;
         let stats = db.get_project_stats(&project_path)
             .map_err(|e| to_rpc_error(MerabError::Store(e.to_string())))?;
@@ -714,79 +324,23 @@ impl MerabApiServer for MerabRpc {
         })
     }
 
-    async fn job_submit(
-        &self,
-        task: String,
-    ) -> Result<String, ErrorObjectOwned> {
-        let job_id = self.job_manager.submit(task).await
-            .map_err(|e| to_rpc_error(e))?;
-        
-        // Spawn the actual job execution in background
-        let job_manager = self.job_manager.clone();
-        let db = self.db.clone();
-        let config = self.config.clone();
-        let mcp_manager = self.mcp_manager.clone();
-        let job_id_clone = job_id.clone();
-        
-        tokio::spawn(async move {
-            if let Err(e) = job_manager.start(&job_id_clone).await {
-                tracing::error!(job_id = %job_id_clone, error = %e, "Failed to start job");
-                return;
-            }
-            
-            // Execute the task
-            job_manager.append_log(&job_id_clone, &format!("[{}] Starting task...", job_id_clone));
-            
-            // Import and call the orchestration
-            match super::ai_methods::handle_ai_orchestrate(&config, &mcp_manager, &db, format!("Task: job {}", job_id_clone), None, false).await {
-                Ok(response) => {
-                    let result = serde_json::to_string(&response).unwrap_or_default();
-                    if let Err(e) = job_manager.complete(&job_id_clone, &result).await {
-                        tracing::error!(job_id = %job_id_clone, error = %e, "Failed to complete job");
-                    }
-                    job_manager.append_log(&job_id_clone, &format!("[{}] Completed", job_id_clone));
-                }
-                Err(e) => {
-                    if let Err(ee) = job_manager.fail(&job_id_clone, &e.to_string()).await {
-                        tracing::error!(job_id = %job_id_clone, error = %ee, "Failed to fail job");
-                    }
-                    job_manager.append_log(&job_id_clone, &format!("[{}] Failed: {}", job_id_clone, e));
-                }
-            }
-        });
-        
-        Ok(job_id)
+    async fn job_submit(&self, task: String) -> Result<String, ErrorObjectOwned> {
+        job_impls::job_submit(self, task).await
     }
 
-    async fn job_status(
-        &self,
-        job_id: String,
-    ) -> Result<Option<crate::jobs::JobSummary>, ErrorObjectOwned> {
-        self.job_manager.get_status(&job_id).await
-            .map_err(|e| to_rpc_error(e))
+    async fn job_status(&self, job_id: String) -> Result<Option<crate::jobs::JobSummary>, ErrorObjectOwned> {
+        job_impls::job_status(self, job_id).await
     }
 
-    async fn job_log(
-        &self,
-        job_id: String,
-    ) -> Result<String, ErrorObjectOwned> {
-        self.job_manager.get_log(&job_id).await
-            .map_err(|e| to_rpc_error(e))
+    async fn job_log(&self, job_id: String) -> Result<String, ErrorObjectOwned> {
+        job_impls::job_log(self, job_id).await
     }
 
-    async fn job_list(
-        &self,
-        limit: Option<u32>,
-    ) -> Result<Vec<crate::jobs::JobSummary>, ErrorObjectOwned> {
-        self.job_manager.list(limit.unwrap_or(20)).await
-            .map_err(|e| to_rpc_error(e))
+    async fn job_list(&self, limit: Option<u32>) -> Result<Vec<crate::jobs::JobSummary>, ErrorObjectOwned> {
+        job_impls::job_list(self, limit).await
     }
 
-    async fn job_cancel(
-        &self,
-        job_id: String,
-    ) -> Result<bool, ErrorObjectOwned> {
-        self.job_manager.cancel(&job_id).await
-            .map_err(|e| to_rpc_error(e))
+    async fn job_cancel(&self, job_id: String) -> Result<bool, ErrorObjectOwned> {
+        job_impls::job_cancel(self, job_id).await
     }
 }

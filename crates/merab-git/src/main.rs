@@ -105,7 +105,9 @@ fn handle_list_tools(req: &JsonRpcRequest) -> JsonRpcResponse {
                     "type": "object",
                     "properties": {
                         "repo_path": { "type": "string", "description": "Path to git repository" },
-                        "cached": { "type": "boolean", "description": "Show cached changes (staged)" }
+                        "cached": { "type": "boolean", "description": "Show cached changes (staged)" },
+                        "branch": { "type": "string", "description": "Compare against this branch (e.g., main, develop)" },
+                        "path": { "type": "string", "description": "Show diff for specific file or directory" }
                     },
                     "required": ["repo_path"]
                 }
@@ -171,11 +173,23 @@ async fn handle_call_tool(req: &JsonRpcRequest) -> JsonRpcResponse {
             let cached = args
                 .and_then(|a| a.get("cached").and_then(|c| c.as_bool()))
                 .unwrap_or(false);
-            let mut cmd_args = vec!["diff"];
+            let branch = args
+                .and_then(|a| a.get("branch").and_then(|b| b.as_str()));
+            let path = args
+                .and_then(|a| a.get("path").and_then(|p| p.as_str()));
+            let mut cmd_args = vec!["diff".to_string()];
             if cached {
-                cmd_args.push("--cached");
+                cmd_args.push("--cached".to_string());
             }
-            run_git(repo_path, &cmd_args).await
+            if let Some(b) = branch {
+                cmd_args.push(format!("{}...HEAD", b));
+            }
+            if let Some(p) = path {
+                cmd_args.push("--".to_string());
+                cmd_args.push(p.to_string());
+            }
+            let cmd_refs: Vec<&str> = cmd_args.iter().map(|s| s.as_str()).collect();
+            run_git(repo_path, &cmd_refs).await
         }
         Some("git.add") => {
             let repo_path = args

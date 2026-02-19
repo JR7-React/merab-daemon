@@ -18,6 +18,8 @@ pub enum EventKind {
     Done,
     /// Ocurrió un error no fatal durante la ejecución.
     Error,
+    /// El cliente está reintentando tras un rate limit o 503.
+    Retrying,
 }
 
 /// Evento de progreso escrito al archivo de eventos en formato NDJSON.
@@ -84,6 +86,17 @@ impl ProgressEvent {
             kind: EventKind::Error,
             persona: None,
             message: message.into(),
+        }
+    }
+
+    pub fn retrying(persona: impl Into<String>, attempt: u32, delay_secs: u64) -> Self {
+        Self {
+            kind: EventKind::Retrying,
+            persona: Some(persona.into()),
+            message: format!(
+                "Rate limit alcanzado, reintentando (intento {}) en {}s...",
+                attempt, delay_secs
+            ),
         }
     }
 }

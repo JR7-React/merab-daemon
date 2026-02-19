@@ -1,6 +1,8 @@
 use merab_core::artifact::ArtifactLog;
 use serde::{Deserialize, Serialize};
 
+use crate::retry::RetryConfig;
+
 /// Role in a chat conversation.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -51,6 +53,8 @@ pub struct AiClientConfig {
     /// Si se configura, se envía como `Authorization: Bearer <key>` al proxy.
     /// El proxy lo pasa al upstream en vez de usar su propia key global.
     pub api_key: Option<String>,
+    /// Retry configuration for 429/503 errors.
+    pub retry: RetryConfig,
 }
 
 /// Request body sent to the LLM proxy (OpenAI-compatible).

@@ -75,5 +75,9 @@ fn display_event(event: &ProgressEvent) {
         EventKind::Error => {
             eprintln!("! Error: {}", event.message);
         }
+        EventKind::Retrying => {
+            let tag = event.persona.as_ref().map(|p| p.to_uppercase()).unwrap_or_default();
+            println!("  [{}] ⟳ {}", tag, event.message);
+        }
     }
 }

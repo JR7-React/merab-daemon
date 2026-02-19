@@ -103,6 +103,10 @@ impl PlannerAgent {
             max_tokens: config.ai.max_tokens,
             temperature: 0.3, // Lower temp for structured output
             api_key: None,
+            retry: merab_ai::RetryConfig::new(
+                config.ai.max_retry_attempts,
+                config.ai.retry_base_delay_ms,
+            ),
         };
         Self {
             client: AiClient::new(ai_config),

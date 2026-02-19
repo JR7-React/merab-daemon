@@ -22,4 +22,7 @@ pub enum AiError {
 
     #[error("orchestration exceeded max steps ({0})")]
     MaxStepsExceeded(u32),
+
+    #[error("rate limited after {attempts} attempt(s): {message}")]
+    RateLimited { attempts: u32, message: String },
 }

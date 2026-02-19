@@ -12,6 +12,7 @@ mod tests {
             max_tokens: 256,
             temperature: 0.7,
             api_key: None,
+            retry: crate::retry::RetryConfig::default(),
         }
     }
 

@@ -65,6 +65,10 @@ impl EventSink {
         self.emit(&ProgressEvent::error(message));
     }
 
+    pub fn emit_retrying(&self, persona: &str, attempt: u32, delay_secs: u64) {
+        self.emit(&ProgressEvent::retrying(persona, attempt, delay_secs));
+    }
+
     pub fn is_enabled(&self) -> bool {
         self.file.is_some()
     }

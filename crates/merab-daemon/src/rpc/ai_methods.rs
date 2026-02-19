@@ -4,7 +4,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use uuid::Uuid;
 
-use merab_ai::{AiClient, AiClientConfig, AiResponse, ChatMessage};
+use merab_ai::{AiClient, AiClientConfig, AiResponse, ChatMessage, RetryConfig};
 use merab_config::MerabConfig;
 use merab_core::multi_agent_pipeline::Task;
 use merab_core::session::{Session, SessionStatus};
@@ -33,6 +33,7 @@ pub fn build_ai_client(config: &MerabConfig) -> Result<AiClient, ErrorObjectOwne
         max_tokens: config.ai.max_tokens,
         temperature: config.ai.temperature,
         api_key: None,
+        retry: RetryConfig::new(config.ai.max_retry_attempts, config.ai.retry_base_delay_ms),
     };
 
     Ok(AiClient::new(ai_config))

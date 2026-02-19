@@ -1,16 +1,13 @@
 use reqwest::Client as HttpClient;
-use std::time::Duration;
 use tracing;
 
 use crate::error::AiError;
+use crate::retry::RetryConfig;
 use crate::types::{
     AiClientConfig, AiResponse, ChatCompletionRequest, ChatCompletionResponse, ChatMessage,
     ToolCall,
 };
 use merab_core::TokenUsage;
-
-const MAX_RETRIES: u32 = 3;
-const BASE_DELAY_MS: u64 = 1000;
 
 pub struct AiClient {
     http: HttpClient,
@@ -33,37 +30,35 @@ impl AiClient {
     }
 
     pub async fn chat(&self, messages: Vec<ChatMessage>) -> Result<AiResponse, AiError> {
-        self.chat_with_retry(messages, MAX_RETRIES).await
-    }
-
-    pub async fn chat_with_retry(
-        &self,
-        messages: Vec<ChatMessage>,
-        max_retries: u32,
-    ) -> Result<AiResponse, AiError> {
+        let max_attempts = self.config.retry.max_attempts;
         let mut last_error = None;
 
-        for attempt in 0..=max_retries {
+        for attempt in 0..max_attempts {
             match self.chat_once(messages.clone()).await {
                 Ok(response) => return Ok(response),
-                Err(AiError::InvalidResponse(ref msg)) if msg.contains("429") => {
-                    let delay = BASE_DELAY_MS * (2u64.pow(attempt));
+                Err(ref e) if RetryConfig::is_retriable(&e.to_string()) => {
+                    let delay = self.config.retry.delay_for_attempt(attempt);
                     tracing::warn!(
-                        attempt = attempt,
-                        delay_ms = delay,
-                        "rate limited, retrying..."
+                        attempt = attempt + 1,
+                        max_attempts = max_attempts,
+                        delay_ms = delay.as_millis(),
+                        "rate limited or service unavailable, retrying..."
                     );
-                    tokio::time::sleep(Duration::from_millis(delay)).await;
-                    last_error = Some(AiError::InvalidResponse(msg.clone()));
+                    tokio::time::sleep(delay).await;
+                    last_error = Some(e.to_string());
                 }
                 Err(e) => return Err(e),
             }
         }
 
-        Err(last_error.unwrap_or(AiError::InvalidResponse("max retries exceeded".into())))
+        Err(AiError::RateLimited {
+            attempts: max_attempts,
+            message: last_error.unwrap_or_else(|| "max attempts exceeded".into()),
+        })
     }
 
-    async fn chat_once(&self, messages: Vec<ChatMessage>) -> Result<AiResponse, AiError> {
+    /// Single attempt with no retry logic. Returns the raw API result.
+    pub async fn chat_once(&self, messages: Vec<ChatMessage>) -> Result<AiResponse, AiError> {
         let mut all_messages = Vec::new();
 
         if let Some(sys) = &self.system_prompt {

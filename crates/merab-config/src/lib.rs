@@ -55,6 +55,10 @@ pub struct AiConfig {
     pub max_fix_cycles: u32,
     #[serde(default)]
     pub auto_run_tests: bool,
+    #[serde(default = "default_max_retry_attempts")]
+    pub max_retry_attempts: u32,
+    #[serde(default = "default_retry_base_delay_ms")]
+    pub retry_base_delay_ms: u64,
 }
 
 fn default_max_parallel_tasks() -> u32 {
@@ -63,6 +67,14 @@ fn default_max_parallel_tasks() -> u32 {
 
 fn default_max_fix_cycles() -> u32 {
     3
+}
+
+fn default_max_retry_attempts() -> u32 {
+    3
+}
+
+fn default_retry_base_delay_ms() -> u64 {
+    1_000
 }
 
 impl AiConfig {
@@ -140,6 +152,8 @@ impl Default for MerabConfig {
                 personas,
                 max_fix_cycles: 3,
                 auto_run_tests: false,
+                max_retry_attempts: 3,
+                retry_base_delay_ms: 1_000,
             },
         }
     }
@@ -177,7 +191,12 @@ impl MerabConfig {
                 defaults.ai.max_parallel_tasks as i64,
             )?
             .set_default("ai.max_fix_cycles", defaults.ai.max_fix_cycles as i64)?
-            .set_default("ai.auto_run_tests", defaults.ai.auto_run_tests)?;
+            .set_default("ai.auto_run_tests", defaults.ai.auto_run_tests)?
+            .set_default("ai.max_retry_attempts", defaults.ai.max_retry_attempts as i64)?
+            .set_default(
+                "ai.retry_base_delay_ms",
+                defaults.ai.retry_base_delay_ms as i64,
+            )?;
 
         // 2. Load from config file (if exists)
         if let Some(config_dir) = dirs::config_dir() {

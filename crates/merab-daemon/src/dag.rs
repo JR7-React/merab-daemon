@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use merab_ai::{AiClient, AiClientConfig, ChatMessage};
+use merab_ai::{AiClient, AiClientConfig, AiError, ChatMessage, RetryConfig};
 use merab_config::MerabConfig;
 use merab_core::multi_agent_pipeline::Task;
 use merab_core::MerabError;
@@ -169,15 +169,35 @@ async fn execute_subtask(
 
     let proxy_url = format!("http://{}:{}", config.daemon.host, config.proxy.port);
     let persona_api_key = config.ai.get_api_key_for_persona(subtask.persona.as_str());
+    let retry_cfg = RetryConfig::new(config.ai.max_retry_attempts, config.ai.retry_base_delay_ms);
     let ai_config = AiClientConfig {
-        proxy_url,
+        proxy_url: proxy_url.clone(),
         model: persona_model.clone(),
-        system_prompt: Some(dynamic_prompt),
+        system_prompt: Some(dynamic_prompt.clone()),
         max_tokens: config.ai.max_tokens,
         temperature: config.ai.temperature,
-        api_key: persona_api_key,
+        api_key: persona_api_key.clone(),
+        retry: retry_cfg,
     };
-    let client = AiClient::new(ai_config);
+    let client = AiClient::new(ai_config.clone());
+
+    // Fallback keys for key rotation: all unique persona keys except the current one.
+    let fallback_keys: Vec<String> = {
+        let mut keys: Vec<String> = config
+            .ai
+            .personas
+            .values()
+            .filter_map(|p| p.api_key.clone())
+            .collect();
+        if let Some(ref proxy_key) = config.proxy.api_key {
+            keys.push(proxy_key.clone());
+        }
+        if let Some(ref curr) = persona_api_key {
+            keys.retain(|k| k != curr);
+        }
+        keys.dedup();
+        keys
+    };
 
     let mut messages: Vec<ChatMessage> = Vec::new();
     if !dep_context.is_empty() {
@@ -193,10 +213,49 @@ async fn execute_subtask(
     let mut total_output: u64 = 0;
 
     for _step in 0..max_steps {
-        let response = client
-            .chat(messages.clone())
-            .await
-            .map_err(|e| to_rpc_error(MerabError::AiError(e.to_string())))?;
+        let chat_result = client.chat(messages.clone()).await;
+
+        // On RateLimited, attempt key rotation before giving up.
+        let response = match chat_result {
+            Ok(r) => r,
+            Err(AiError::RateLimited { attempts, ref message }) => {
+                tracing::warn!(
+                    persona = %subtask.persona,
+                    attempts = attempts,
+                    "rate limited — attempting key rotation"
+                );
+
+                let mut rotated = false;
+                let mut rotated_response = None;
+
+                for (i, fallback_key) in fallback_keys.iter().enumerate() {
+                    if let Some(ref sink) = event_sink {
+                        sink.emit_retrying(subtask.persona.as_str(), i as u32 + 1, 0);
+                    }
+                    let fallback_client = AiClient::new(AiClientConfig {
+                        api_key: Some(fallback_key.clone()),
+                        retry: RetryConfig::new(1, config.ai.retry_base_delay_ms),
+                        ..ai_config.clone()
+                    });
+                    if let Ok(r) = fallback_client.chat(messages.clone()).await {
+                        tracing::info!(persona = %subtask.persona, "key rotation succeeded");
+                        rotated = true;
+                        rotated_response = Some(r);
+                        break;
+                    }
+                }
+
+                if rotated {
+                    rotated_response.unwrap()
+                } else {
+                    return Err(to_rpc_error(MerabError::AiError(format!(
+                        "Rate limited after {} attempts, key rotation failed: {}",
+                        attempts, message
+                    ))));
+                }
+            }
+            Err(e) => return Err(to_rpc_error(MerabError::AiError(e.to_string()))),
+        };
 
         if let Some(ref usage) = response.usage {
             total_input += usage.input;

@@ -1,6 +1,7 @@
 mod agent_cmd;
 mod ask_cmd;
 mod bootstrap;
+mod chat_render;
 mod chat_ui;
 mod client;
 mod config_cmd;

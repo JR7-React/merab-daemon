@@ -11,6 +11,7 @@ const BUILT_IN_AGENTS: &[(&str, &str, &str)] = &[
     ("merab-fs", "merab-fs.exe", "FileSystem agent (read, write, list, search)"),
     ("merab-shell", "merab-shell.exe", "Shell agent (execute commands)"),
     ("merab-git", "merab-git.exe", "Git agent (status, add, commit, log, diff)"),
+    ("merab-http", "merab-http.exe", "HTTP agent (fetch, post, download)"),
 ];
 
 fn bin_dir() -> Result<PathBuf> {

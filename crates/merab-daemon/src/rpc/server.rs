@@ -174,6 +174,37 @@ pub trait MerabApi {
         &self,
         project_path: String,
     ) -> Result<ProjectStats, ErrorObjectOwned>;
+
+    // Job methods
+    #[method(name = "merab.job.submit")]
+    async fn job_submit(
+        &self,
+        task: String,
+    ) -> Result<String, ErrorObjectOwned>;
+
+    #[method(name = "merab.job.status")]
+    async fn job_status(
+        &self,
+        job_id: String,
+    ) -> Result<Option<crate::jobs::JobSummary>, ErrorObjectOwned>;
+
+    #[method(name = "merab.job.log")]
+    async fn job_log(
+        &self,
+        job_id: String,
+    ) -> Result<String, ErrorObjectOwned>;
+
+    #[method(name = "merab.job.list")]
+    async fn job_list(
+        &self,
+        limit: Option<u32>,
+    ) -> Result<Vec<crate::jobs::JobSummary>, ErrorObjectOwned>;
+
+    #[method(name = "merab.job.cancel")]
+    async fn job_cancel(
+        &self,
+        job_id: String,
+    ) -> Result<bool, ErrorObjectOwned>;
 }
 
 pub struct MerabRpc {
@@ -183,6 +214,7 @@ pub struct MerabRpc {
     pub mcp_manager: Arc<McpManager>,
     pub config: Arc<MerabConfig>,
     pub start_time: Instant,
+    pub job_manager: Arc<crate::jobs::JobManager>,
 }
 
 pub(crate) fn to_rpc_error(e: MerabError) -> ErrorObjectOwned {
@@ -680,5 +712,81 @@ impl MerabApiServer for MerabRpc {
             total_tokens_output: stats.total_tokens_output,
             total_cost_usd: stats.total_cost_usd,
         })
+    }
+
+    async fn job_submit(
+        &self,
+        task: String,
+    ) -> Result<String, ErrorObjectOwned> {
+        let job_id = self.job_manager.submit(task).await
+            .map_err(|e| to_rpc_error(e))?;
+        
+        // Spawn the actual job execution in background
+        let job_manager = self.job_manager.clone();
+        let db = self.db.clone();
+        let config = self.config.clone();
+        let mcp_manager = self.mcp_manager.clone();
+        let job_id_clone = job_id.clone();
+        
+        tokio::spawn(async move {
+            if let Err(e) = job_manager.start(&job_id_clone).await {
+                tracing::error!(job_id = %job_id_clone, error = %e, "Failed to start job");
+                return;
+            }
+            
+            // Execute the task
+            job_manager.append_log(&job_id_clone, &format!("[{}] Starting task...", job_id_clone));
+            
+            // Import and call the orchestration
+            match super::ai_methods::handle_ai_orchestrate(&config, &mcp_manager, &db, format!("Task: job {}", job_id_clone), None, false).await {
+                Ok(response) => {
+                    let result = serde_json::to_string(&response).unwrap_or_default();
+                    if let Err(e) = job_manager.complete(&job_id_clone, &result).await {
+                        tracing::error!(job_id = %job_id_clone, error = %e, "Failed to complete job");
+                    }
+                    job_manager.append_log(&job_id_clone, &format!("[{}] Completed", job_id_clone));
+                }
+                Err(e) => {
+                    if let Err(ee) = job_manager.fail(&job_id_clone, &e.to_string()).await {
+                        tracing::error!(job_id = %job_id_clone, error = %ee, "Failed to fail job");
+                    }
+                    job_manager.append_log(&job_id_clone, &format!("[{}] Failed: {}", job_id_clone, e));
+                }
+            }
+        });
+        
+        Ok(job_id)
+    }
+
+    async fn job_status(
+        &self,
+        job_id: String,
+    ) -> Result<Option<crate::jobs::JobSummary>, ErrorObjectOwned> {
+        self.job_manager.get_status(&job_id).await
+            .map_err(|e| to_rpc_error(e))
+    }
+
+    async fn job_log(
+        &self,
+        job_id: String,
+    ) -> Result<String, ErrorObjectOwned> {
+        self.job_manager.get_log(&job_id).await
+            .map_err(|e| to_rpc_error(e))
+    }
+
+    async fn job_list(
+        &self,
+        limit: Option<u32>,
+    ) -> Result<Vec<crate::jobs::JobSummary>, ErrorObjectOwned> {
+        self.job_manager.list(limit.unwrap_or(20)).await
+            .map_err(|e| to_rpc_error(e))
+    }
+
+    async fn job_cancel(
+        &self,
+        job_id: String,
+    ) -> Result<bool, ErrorObjectOwned> {
+        self.job_manager.cancel(&job_id).await
+            .map_err(|e| to_rpc_error(e))
     }
 }

@@ -2,9 +2,20 @@ use anyhow::Result;
 use merab_ai::{AiResponse, ChatMessage};
 use merab_core::{AgentManifest, AgentRecord, AgentSummary, Message, Session};
 use merab_transport::a2a::{AgentCard, TaskResponse};
+use serde::{Deserialize, Serialize};
 use jsonrpsee::core::client::ClientT;
 use jsonrpsee::core::params::ObjectParams;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JobSummary {
+    pub id: String,
+    pub task: String,
+    pub status: String,
+    pub created_at: String,
+    pub started_at: Option<String>,
+    pub duration_secs: Option<u64>,
+}
 
 pub struct MerabClient {
     client: HttpClient,
@@ -274,6 +285,43 @@ impl MerabClient {
         let mut params = ObjectParams::new();
         params.insert("project_path", project_path)?;
         let result: merab_core::ProjectStats = self.client.request("merab.session.stats", params).await?;
+        Ok(result)
+    }
+
+    pub async fn job_submit(&self, task: &str) -> Result<String> {
+        let mut params = ObjectParams::new();
+        params.insert("task", task)?;
+        let result: String = self.client.request("merab.job.submit", params).await?;
+        Ok(result)
+    }
+
+    pub async fn job_status(&self, job_id: &str) -> Result<Option<JobSummary>> {
+        let mut params = ObjectParams::new();
+        params.insert("job_id", job_id)?;
+        let result: Option<JobSummary> = self.client.request("merab.job.status", params).await?;
+        Ok(result)
+    }
+
+    pub async fn job_log(&self, job_id: &str) -> Result<String> {
+        let mut params = ObjectParams::new();
+        params.insert("job_id", job_id)?;
+        let result: String = self.client.request("merab.job.log", params).await?;
+        Ok(result)
+    }
+
+    pub async fn job_list(&self, limit: Option<u32>) -> Result<Vec<JobSummary>> {
+        let mut params = ObjectParams::new();
+        if let Some(l) = limit {
+            params.insert("limit", l)?;
+        }
+        let result: Vec<JobSummary> = self.client.request("merab.job.list", params).await?;
+        Ok(result)
+    }
+
+    pub async fn job_cancel(&self, job_id: &str) -> Result<bool> {
+        let mut params = ObjectParams::new();
+        params.insert("job_id", job_id)?;
+        let result: bool = self.client.request("merab.job.cancel", params).await?;
         Ok(result)
     }
 }

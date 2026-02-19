@@ -133,6 +133,9 @@ enum Commands {
         test: bool,
     },
 
+    // #[command(about = "Job management")]
+    // Jobs(JobsCommands),
+
     #[command(about = "Ask AI to create a plan for a task")]
     Plan {
         #[arg(index = 1)]
@@ -184,6 +187,15 @@ enum MemoryCommands {
         prefix: Option<String>,
     },
 }
+
+// TODO: Enable JobsCommands when clap issue is resolved
+// #[derive(Subcommand)]
+// enum JobsCommands {
+//     List,
+//     Log { id: String },
+//     Wait { id: String },
+//     Cancel { id: String },
+// }
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -454,6 +466,9 @@ async fn main() -> Result<()> {
                 Err(e) => eprintln!("Error: {}", e),
             }
         }
+
+        // Commands::Jobs disabled due to clap issue
+        // Commands::Jobs(cmd) => { ... }
 
         Commands::Plan { task } => {
             let ready_client = bootstrap::ensure_ready(&cli.url).await?;

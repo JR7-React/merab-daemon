@@ -1,6 +1,7 @@
 pub mod agents;
 pub mod cache;
 pub mod db;
+pub mod jobs;
 pub mod memory;
 pub mod messages;
 pub mod sessions;

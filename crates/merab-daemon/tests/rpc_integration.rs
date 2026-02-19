@@ -28,11 +28,12 @@ async fn setup() -> (HttpClient, SocketAddr) {
 
     let rpc = MerabRpc {
         registry,
-        db,
+        db: db.clone(),
         supervisor,
         mcp_manager,
         config,
         start_time: Instant::now(),
+        job_manager: Arc::new(merab_daemon::jobs::JobManager::new(db.clone())),
     };
 
     // Bind to port 0 to get an ephemeral port

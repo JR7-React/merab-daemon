@@ -3,6 +3,9 @@ use uuid::Uuid;
 
 #[derive(Debug, Error)]
 pub enum MerabError {
+    #[error("not found: {0}")]
+    NotFound(String),
+
     #[error("agent not found: {0}")]
     AgentNotFound(Uuid),
 
@@ -55,6 +58,7 @@ pub enum MerabError {
 impl MerabError {
     pub fn code(&self) -> i32 {
         match self {
+            MerabError::NotFound(_) => -32000,
             MerabError::AgentNotFound(_) => -32001,
             MerabError::AlreadyExists(_) => -32002,
             MerabError::NotRunning(_) => -32003,

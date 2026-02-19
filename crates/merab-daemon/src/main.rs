@@ -10,6 +10,7 @@ use tracing_subscriber::EnvFilter;
 use merab_config::MerabConfig;
 use merab_core::AgentStatus;
 use merab_daemon::a2a_server::{A2AContext, start_a2a_server};
+use merab_daemon::jobs::JobManager;
 use merab_daemon::mcp_manager::McpManager;
 use merab_daemon::process::is_process_alive;
 use merab_daemon::proxy::{ProxyContext, start_proxy_server};
@@ -104,11 +105,12 @@ async fn main() -> Result<()> {
 
     let rpc = MerabRpc {
         registry: registry.clone(),
-        db,
+        db: db.clone(),
         supervisor: supervisor.clone(),
         mcp_manager: mcp_manager.clone(),
         config: config.clone(),
         start_time: std::time::Instant::now(),
+        job_manager: Arc::new(JobManager::new(db)),
     };
 
     let rpc_port = config.daemon.rpc_port;

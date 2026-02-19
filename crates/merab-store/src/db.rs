@@ -106,6 +106,20 @@ impl Database {
 
             CREATE INDEX IF NOT EXISTS idx_sessions_project
                 ON sessions(project_path, created_at DESC);
+
+            CREATE TABLE IF NOT EXISTS jobs (
+                id          TEXT PRIMARY KEY,
+                task        TEXT NOT NULL,
+                status      TEXT NOT NULL DEFAULT 'pending',
+                log_file    TEXT NOT NULL,
+                created_at  TEXT NOT NULL,
+                started_at  TEXT,
+                finished_at TEXT,
+                result      TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+            CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at);
             ",
         )?;
 

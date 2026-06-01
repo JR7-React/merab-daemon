@@ -1,8 +1,40 @@
 # Merab
 
+[![CI](https://github.com/JR7-React/merab-daemon/actions/workflows/ci.yml/badge.svg)](https://github.com/JR7-React/merab-daemon/actions/workflows/ci.yml)
+![Rust](https://img.shields.io/badge/Rust-2024-f97316)
+![License](https://img.shields.io/badge/license-MIT-059669)
+![Status](https://img.shields.io/badge/status-experimental-2563eb)
+
+![Merab social preview](docs/assets/merab-social-preview.png)
+
 Merab is a local Rust runtime for orchestrating AI agents at the operating-system level. It provides a CLI, a JSON-RPC daemon, local persistence, MCP/A2A transports, sandboxing hooks, background jobs, project memory, code indexing, and a multi-agent task pipeline.
 
 > Status: experimental. Merab is useful for local exploration and agent-runtime research, but the API and storage schema can still change between sprints.
+
+## Why Merab?
+
+- **Local-first agent runtime:** run the daemon and tools on your own machine.
+- **Multi-agent execution:** split work into planner-generated DAG subtasks.
+- **Practical tool bridge:** connect agents to filesystem, shell, git, HTTP, MCP, and A2A flows.
+- **Session memory:** persist conversations, artifacts, token usage, jobs, and project context.
+
+## Demo In 60 Seconds
+
+```bash
+cargo build --workspace
+cargo run -p merab-daemon --bin merabd
+cargo run -p merab-cli --bin merab -- ask "summarize this repo and list the crates"
+```
+
+Typical flow:
+
+```text
+merab ask "ship the feature safely"
+planner  -> decomposes task into subtasks
+dag      -> runs ready tasks in waves
+tools    -> calls fs, shell, git, http agents
+session  -> saves artifacts, cost, and final summary
+```
 
 ## What Merab Does
 
@@ -120,6 +152,8 @@ Merab is a local runtime that can execute tools and shell commands through agent
 
 - [docs/README.md](docs/README.md) - documentation index
 - [docs/cli-commands.md](docs/cli-commands.md) - CLI reference
+- [docs/index.html](docs/index.html) - GitHub Pages landing page
+- [docs/promotion-plan.md](docs/promotion-plan.md) - launch/promotion checklist
 - [docs/public-release-checklist.md](docs/public-release-checklist.md) - checks before making the repository public
 - [plans/](plans/) - sprint plans and implementation notes
 - [AGENTS.md](AGENTS.md) - working context for AI coding agents

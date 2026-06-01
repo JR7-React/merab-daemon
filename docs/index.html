@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Merab is a local Rust runtime for orchestrating OS-level AI agents with MCP, JSON-RPC, SQLite, and DAG execution."
+    />
+    <meta property="og:title" content="Merab" />
+    <meta
+      property="og:description"
+      content="Local Rust runtime for OS-level AI agents."
+    />
+    <meta property="og:image" content="assets/merab-social-preview.png" />
+    <title>Merab - Local Rust Runtime for AI Agents</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <nav class="site-nav" aria-label="Primary navigation">
+      <a class="brand" href="#top">Merab</a>
+      <div class="nav-links">
+        <a href="#runtime">Runtime</a>
+        <a href="#quickstart">Quickstart</a>
+        <a href="https://github.com/JR7-React/merab-daemon">GitHub</a>
+      </div>
+    </nav>
+
+    <header id="top" class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Rust / MCP / JSON-RPC / SQLite</p>
+        <h1>Merab</h1>
+        <p>
+          A local runtime for orchestrating OS-level AI agents, splitting work
+          into parallel subtasks, and preserving the session trail.
+        </p>
+        <div class="actions" aria-label="Primary actions">
+          <a href="https://github.com/JR7-React/merab-daemon">View on GitHub</a>
+          <a href="#quickstart">Run locally</a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section id="runtime" class="band">
+        <div class="section-header">
+          <p class="eyebrow">Runtime shape</p>
+          <h2>Plan, execute, track, continue.</h2>
+        </div>
+        <div class="feature-grid">
+          <article>
+            <h3>Planner DAG</h3>
+            <p>Breaks a task into persona-specific subtasks with dependencies.</p>
+          </article>
+          <article>
+            <h3>Local tools</h3>
+            <p>Connects agents to filesystem, shell, git, HTTP, MCP, and A2A.</p>
+          </article>
+          <article>
+            <h3>Session memory</h3>
+            <p>Stores conversations, artifacts, jobs, token usage, and context.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="quickstart" class="band command-band">
+        <div class="section-header">
+          <p class="eyebrow">Quickstart</p>
+          <h2>Run the daemon, then ask Merab.</h2>
+        </div>
+        <pre><code>cargo build --workspace
+cargo run -p merab-daemon --bin merabd
+cargo run -p merab-cli --bin merab -- ask "summarize this repo"</code></pre>
+      </section>
+    </main>
+  </body>
+</html>

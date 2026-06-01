@@ -1,5 +1,22 @@
-# Sobre el Creador
+# Merab Documentation
 
-¡Hola! Soy Javier Romero, tengo 25 años y soy de Honduras. Actualmente estoy estudiando Informática Administrativa. Me apasiona el desarrollo con inteligencia artificial.
+This directory contains project notes for Merab contributors and users.
 
-La idea detrás de este proyecto es conseguir salir a la vista de las grandes empresas de tecnología y, claro, revolucionar cómo la IA interactúa con la máquina. En otras palabras, quiero darles las herramientas a la IA para que no quede atrapada o limitada.
+## Start Here
+
+- [CLI command reference](cli-commands.md)
+- [Project rules](RULES.md)
+- [Public release checklist](public-release-checklist.md)
+- [Sprint history](sprints/README.md)
+
+## Planning Notes
+
+The `plans/` directory at the repository root contains sprint-level plans for recently implemented and pending work. Older implemented sprint notes live under `docs/sprints/`.
+
+## Local Configuration
+
+Keep real local config out of Git:
+
+- Use `merab.example.toml` as a template.
+- Keep the real `merab.toml` ignored.
+- Store provider keys through `merab config set proxy.api_key replace-with-your-provider-key` or `MERAB_PROXY__API_KEY`.

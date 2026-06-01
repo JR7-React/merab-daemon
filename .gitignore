@@ -1,13 +1,28 @@
-/target
+/target/
+
+# Local databases and caches
 *.db
 *.db-journal
+*.sqlite
+*.sqlite3
+
+# Local environment and config files. Keep examples committed.
 .env
+.env.*
+!.env.example
+merab.toml
 forge.toml
+*.local.toml
+
+# Local tool state
+.claude/
+.codex/
 
 # Temp/debug files
 *.log
 ask_output.txt
-debug_forge.ps1
+debug_*.ps1
 start_error.log
-.claude/
-.claude/settings.local.json
+*_error.txt
+errors.txt
+*_temp.ps1

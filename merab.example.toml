@@ -1,0 +1,40 @@
+[daemon]
+host = "127.0.0.1"
+rpc_port = 9090
+a2a_port = 8080
+
+[proxy]
+enabled = true
+port = 8001
+upstream_url = "https://openrouter.ai/api/v1"
+# Do not commit real keys. Use MERAB_PROXY__API_KEY or:
+# merab config set proxy.api_key replace-with-your-provider-key
+# api_key = "replace-with-your-provider-key"
+
+[sandbox]
+memory_limit_mb = 512
+enabled = true
+
+[ai]
+model = "google/gemini-2.5-flash"
+system_prompt = "You are Merab, a helpful AI assistant that can orchestrate tools and agents."
+max_tokens = 4096
+temperature = 0.7
+max_orchestration_steps = 10
+max_parallel_tasks = 4
+max_fix_cycles = 3
+auto_run_tests = false
+max_retry_attempts = 3
+retry_base_delay_ms = 1000
+
+[ai.personas.engineer]
+model = "google/gemini-2.5-flash"
+
+[ai.personas.coder]
+model = "deepseek/deepseek-chat-v3-0324"
+
+[ai.personas.reviewer]
+model = "google/gemini-2.5-flash"
+
+[ai.personas.qa]
+model = "google/gemini-2.5-flash"

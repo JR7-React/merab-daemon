@@ -187,7 +187,7 @@ merab call merab-fs read_file '{"path": "/tmp/test.txt"}'
 
 ```bash
 merab memory put project.name "merab"
-merab memory put api.token "sk-xxx" --ttl 3600   # expira en 1 hora
+merab memory put project.note "local value" --ttl 3600   # expira en 1 hora
 ```
 
 ### `merab memory get <key>`
@@ -228,7 +228,7 @@ merab config get dag.max_parallel_tasks
 
 ```bash
 merab config set dag.max_parallel_tasks 8
-merab config set proxy.api_key "sk-ant-..."
+merab config set proxy.api_key "replace-with-your-provider-key"
 ```
 
 ### `merab config edit`
@@ -349,5 +349,5 @@ merab a2a-send http://remote:9090 "code_review" "revisa auth.rs"
 
 | Variable | Descripcion |
 |----------|-------------|
-| `ANTHROPIC_API_KEY` | API key de Anthropic (requerida para ask/chat) |
-| `MERAB_CONFIG` | Ruta al archivo de configuracion (default: `~/.merab/config.toml`) |
+| `MERAB_PROXY__API_KEY` | API key del proveedor LLM configurada solo en el entorno local |
+| `MERAB_CONFIG` | Ruta al archivo de configuracion |
